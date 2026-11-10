@@ -1,0 +1,450 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  DRAFT
+  AWAITING_FUNDING
+  ACTIVE
+  PAUSED
+  EXPIRED
+}
+
+enum PaymentState {
+  RESERVED
+  PAYOUT_PENDING
+  PAID
+  PAYOUT_FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum FulfillmentState {
+  NOT_REQUESTED
+  PROCESSING
+  DELIVERED
+  DELIVERY_FAILED
+  UNKNOWN
+}
+
+enum AgentStatus {
+  REGISTERED
+  REVOKED
+}
+
+enum JobKind {
+  RUN_AGENT
+  RECOVER_OPERATION
+  SYNC_TASK
+  DEMO_SCENARIO
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  DEAD
+}
+
+enum ChainTxKind {
+  CREATE_TASK
+  FUND_TASK
+  REGISTER_AGENT
+  UPDATE_POLICY
+  REVOKE_AGENT
+  PAUSE_TASK
+  RESUME_TASK
+  WITHDRAW
+  RESERVE
+  EXECUTE
+  CANCEL
+  EXPIRE
+}
+
+enum ChainTxStatus {
+  PREPARED
+  SUBMITTED
+  SUCCESS
+  FAILED
+  UNKNOWN
+}
+
+enum ProviderResultStatus {
+  PROCESSING
+  DELIVERED
+  FAILED
+}
+
+enum AgentRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+}
+
+enum AgentRunMode {
+  LIVE
+  SCRIPTED
+}
+
+model User {
+  id          String   @id @default(cuid())
+  accountId   String   @unique
+  displayName String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  sessions WalletSession[]
+  tasks    Task[]
+}
+
+model WalletSession {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  csrfHash  String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model WalletChallenge {
+  id        String    @id @default(cuid())
+  accountId String
+  nonce     String    @unique
+  domain    String
+  network   String
+  message   String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model Task {
+  id            String     @id @default(cuid())
+  chainTaskId   String     @unique
+  contractId    String
+  network       String
+  ownerAccountId String
+  ownerUserId   String?
+  owner         User?      @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  name          String
+  objective     String
+  status        TaskStatus @default(DRAFT)
+  paused        Boolean    @default(false)
+
+  policyVersion           Int    @default(1)
+  maxPerOperationYocto    String
+  allowedProviders        String[]
+  reservationTtlBlocks    Int
+  expiresAtBlock          BigInt
+  setupStorageDepositYocto String
+  budgetGoalYocto         String
+
+  totalFundedYocto      String   @default("0")
+  availableYocto        String   @default("0")
+  reservedYocto         String   @default("0")
+  spentYocto            String   @default("0")
+  withdrawnYocto        String   @default("0")
+  withdrawalPendingYocto String  @default("0")
+  createdAtBlock        BigInt?
+  syncedAt              DateTime?
+  lastSyncError         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  policySnapshots PolicySnapshot[]
+  agents          Agent[]
+  operations      Operation[]
+  documents       Document[]
+  quotes          Quote[]
+  events          AuditEvent[]
+  jobs            Job[]
+  chainTx         ChainTransaction[]
+  runs            AgentRun[]
+  providerResults ProviderResult[]
+
+  @@index([ownerAccountId])
+  @@index([status])
+}
+
+model PolicySnapshot {
+  id                    String   @id @default(cuid())
+  taskId                String
+  task                  Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  version               Int
+  maxPerOperationYocto  String
+  allowedProviders      String[]
+  reservationTtlBlocks  Int
+  expiresAtBlock        BigInt
+  policyHash            String
+  createdBy             String
+  createdTxHash         String?
+  createdAt             DateTime @default(now())
+
+  @@unique([taskId, version])
+}
+
+model Agent {
+  id               String      @id @default(cuid())
+  taskId           String
+  task             Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label            String
+  slot             Int
+  accountId        String
+  publicKey        String
+  keyEnvVar        String
+  status           AgentStatus @default(REGISTERED)
+  registeredTxHash String?
+  registeredAtBlock BigInt?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  operations Operation[]
+  runs       AgentRun[]
+  quotes     Quote[]
+
+  @@unique([taskId, accountId])
+  @@unique([taskId, slot])
+  @@index([accountId])
+}
+
+model Provider {
+  id                 String   @id @default(cuid())
+  accountId          String   @unique
+  name               String
+  description        String
+  network            String
+  contractId         String
+  endpoint           String
+  operatorControlled Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  services Service[]
+}
+
+model Service {
+  id                String   @id @default(cuid())
+  providerId        String
+  provider          Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  serviceKey        String
+  serviceId         String
+  name              String
+  description       String
+  priceYocto        String
+  outputSchemaHash  String
+  version           String
+  engine            String
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  quotes Quote[]
+
+  @@unique([providerId, serviceKey, version])
+  @@index([active])
+}
+
+model Quote {
+  id                String   @id @default(cuid())
+  taskId            String
+  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentId           String?
+  agent             Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  serviceId         String
+  service           Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  documentId        String?
+  providerQuoteId   String
+  requestHash       String
+  outputSchemaHash  String
+  priceYocto        String
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([requestHash])
+}
+
+model Document {
+  id                String   @id @default(cuid())
+  taskId            String
+  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label             String
+  filename          String
+  contentCiphertext String
+  contentHash       String
+  byteSize          Int
+  createdAt         DateTime @default(now())
+
+  operations Operation[]
+
+  @@index([taskId])
+}
+
+model Operation {
+  id                   String   @id @default(cuid())
+  taskId               String
+  task                 Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  chainTaskId          String
+  operationId          String
+  agentId              String
+  agent                Agent    @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  providerAccountId    String
+  serviceId            String
+  amountYocto          String
+  requestHash          String
+  outputSchemaHash     String
+  policyVersion        Int
+  documentId           String?
+  document             Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  paymentState         PaymentState     @default(RESERVED)
+  fulfillmentState     FulfillmentState @default(NOT_REQUESTED)
+  reservationExpiresAtBlock BigInt
+  expiresAtBlock       BigInt
+  chainCreatedAtBlock  BigInt?
+  settledAtBlock       BigInt?
+  payoutAttempts       Int      @default(0)
+  recoveryAttempts     Int      @default(0)
+  needsRecovery        Boolean  @default(false)
+  lastError            String?
+  denialCode           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chainTransactions ChainTransaction[]
+
+  @@unique([chainTaskId, operationId])
+  @@index([taskId, createdAt])
+  @@index([paymentState])
+  @@index([fulfillmentState])
+  @@index([needsRecovery])
+}
+
+model ChainTransaction {
+  id               String        @id @default(cuid())
+  taskId           String?
+  task             Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  operationDbId    String?
+  operation        Operation?    @relation(fields: [operationDbId], references: [id], onDelete: SetNull)
+  kind             ChainTxKind
+  status           ChainTxStatus @default(PREPARED)
+  txHash           String?       @unique
+  signerAccountId  String
+  receiverId       String
+  network          String
+  blockHeight      BigInt?
+  outcome          Json?
+  errorMessage     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  confirmedAt      DateTime?
+
+  @@index([operationDbId, createdAt])
+  @@index([signerAccountId])
+  @@index([status])
+}
+
+model ProviderResult {
+  id                String               @id @default(cuid())
+  chainTaskId       String
+  operationId       String
+  requestHash       String
+  outputSchemaHash  String
+  serviceKey        String
+  status            ProviderResultStatus @default(PROCESSING)
+  resultJson        Json?
+  attempts          Int                  @default(0)
+  lastError         String?
+  deliveredAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  task   Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId String?
+
+  @@unique([chainTaskId, operationId])
+  @@index([status])
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  kind           JobKind
+  taskId         String?
+  task           Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  dedupeKey      String?   @unique
+  status         JobStatus @default(QUEUED)
+  priority       Int       @default(0)
+  payload        Json
+  runAt          DateTime  @default(now())
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+  lastError      String?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([leaseExpiresAt])
+  @@index([taskId])
+}
+
+model AuditEvent {
+  id          BigInt   @id @default(autoincrement())
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  operationId String?
+  type        String
+  actor       String?
+  summary     String
+  severity    String   @default("neutral")
+  data        Json     @default("{}")
+  dedupeKey   String?  @unique
+  createdAt   DateTime @default(now())
+
+  @@index([taskId, id])
+  @@index([operationId])
+}
+
+model AgentRun {
+  id            String         @id @default(cuid())
+  taskId        String
+  task          Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentId       String
+  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  runId         String
+  mode          AgentRunMode
+  status        AgentRunStatus @default(QUEUED)
+  documentId    String?
+  steps         Int            @default(0)
+  tokensUsed    Int            @default(0)
+  model         String?
+  summary       String?
+  outputJson    Json?
+  denialCode    String?
+  error         String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([runId, agentId])
+  @@index([taskId, createdAt])
+}

@@ -1,0 +1,47 @@
+{
+  "name": "poolguard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PoolGuard - one task budget, multiple agents, enforced on NEAR",
+  "license": "MIT",
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "prepare:packages": "pnpm --filter @poolguard/shared build && pnpm --filter @poolguard/db build && pnpm --filter @poolguard/agent-runtime build",
+    "postinstall": "pnpm run prepare:packages",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test && pnpm test:testnet-check",
+    "test:testnet-check": "node --test scripts/testnet-check.test.mjs",
+    "testnet:preflight": "node scripts/testnet-check.mjs",
+    "testnet:verify": "node scripts/testnet-check.mjs --live",
+    "dev": "pnpm run prepare:packages && node scripts/dev-stack.mjs",
+    "dev:postgres": "node scripts/local-postgres.mjs",
+    "sandbox": "node scripts/sandbox.mjs",
+    "sandbox:test": "node scripts/sandbox-test.mjs",
+    "dev:api": "pnpm --filter @poolguard/api dev",
+    "dev:worker": "pnpm --filter @poolguard/worker dev",
+    "dev:provider": "pnpm --filter @poolguard/provider dev",
+    "dev:web": "pnpm --filter @poolguard/web dev",
+    "db:generate": "pnpm --filter @poolguard/api db:generate",
+    "db:migrate": "pnpm --filter @poolguard/api db:migrate",
+    "db:seed": "pnpm --filter @poolguard/api db:seed",
+    "db:reset": "pnpm --filter @poolguard/db db:reset",
+    "contract:build": "bash scripts/contract-build.sh",
+    "contract:test": "cargo test --manifest-path contracts/poolguard/Cargo.toml",
+    "contract:sandbox-test": "node scripts/sandbox-test.mjs",
+    "test:e2e": "pnpm --filter @poolguard/web e2e"
+  },
+  "devDependencies": {
+    "@embedded-postgres/linux-x64": "18.4.0-beta.17",
+    "@types/node": "24.19.2",
+    "dotenv": "18.0.9",
+    "embedded-postgres": "18.4.0-beta.17",
+    "near-api-js": "7.4.0",
+    "near-sandbox": "0.3.4",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,354 @@
+@import "tailwindcss";
+
+/* The wallet selector stylesheet is served from /public instead of being
+   bundled: its Google Fonts @import cannot legally follow Tailwind's rules. */
+
+@theme inline {
+  --color-background: #f8f8f6;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f1ee;
+  --color-surface-hover: #f5f5f2;
+  --color-surface-selected: #eaeae5;
+  --color-foreground: #20211f;
+  --color-foreground-secondary: #565952;
+  --color-foreground-muted: #6c7067;
+  --color-border: #e3e4de;
+  --color-border-strong: #858a7f;
+  --color-primary: #242721;
+  --color-primary-hover: #393e34;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #4d6042;
+  --color-focus: #4d6042;
+  --color-success: #25603e;
+  --color-success-background: #ecf5ee;
+  --color-warning: #805514;
+  --color-warning-background: #fbf3e4;
+  --color-danger: #a33535;
+  --color-danger-background: #faeeee;
+  --color-info: #3c5e87;
+  --color-info-background: #eef3f9;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-window: 16px;
+  --shadow-panel: 0 1px 2px rgb(24 28 20 / 3%);
+  --shadow-popover: 0 8px 28px rgb(24 28 20 / 9%);
+  --shadow-demo: 0 18px 56px rgb(24 28 20 / 8%);
+}
+
+:root {
+  color-scheme: light;
+  --background: #f8f8f6;
+  --surface: #ffffff;
+  --surface-muted: #f1f1ee;
+  --surface-hover: #f5f5f2;
+  --surface-selected: #eaeae5;
+  --foreground: #20211f;
+  --foreground-secondary: #565952;
+  --foreground-muted: #6c7067;
+  --border: #e3e4de;
+  --border-strong: #858a7f;
+  --primary: #242721;
+  --primary-hover: #393e34;
+  --primary-foreground: #ffffff;
+  --accent: #4d6042;
+  --focus: #4d6042;
+  --success: #25603e;
+  --success-background: #ecf5ee;
+  --warning: #805514;
+  --warning-background: #fbf3e4;
+  --danger: #a33535;
+  --danger-background: #faeeee;
+  --info: #3c5e87;
+  --info-background: #eef3f9;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-window: 16px;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: #dfe5d8;
+    color: #20211f;
+  }
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :where(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@layer components {
+  .workspace-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    box-shadow: 0 1px 2px rgb(24 28 20 / 3%);
+  }
+  .financial-value {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+  .hairline {
+    height: 1px;
+    background: var(--border);
+  }
+  .eyebrow {
+    font-size: 12px;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--foreground-muted);
+    font-weight: 500;
+  }
+  .prose-quiet p {
+    color: var(--foreground-secondary);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .scrollbar-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: #cfd1c9 transparent;
+  }
+  .scrollbar-quiet::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-quiet::-webkit-scrollbar-thumb {
+    background: #cfd1c9;
+    border-radius: 999px;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .grid-lines {
+    background-image:
+      linear-gradient(to right, rgb(32 33 31 / 4%) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(32 33 31 / 4%) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+/* NEAR Wallet Selector: align the modal with the PoolGuard surface system. */
+.nws-modal-wrapper .nws-modal {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgb(24 28 20 / 9%);
+  font-family: var(--font-sans);
+}
+.nws-modal-wrapper .nws-modal-header h2 {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ motion
+   One motion vocabulary: feedback in 100–200 ms, reveals in 250–400 ms. */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 380ms;
+}
+
+/* Route transitions (React <ViewTransition>): a quick exit, a soft rise in. */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(.page-out) {
+  animation: 140ms var(--ease-out) both pg-fade reverse;
+}
+::view-transition-new(.page-in) {
+  animation:
+    220ms var(--ease-out) 90ms both pg-fade,
+    360ms var(--ease-out) both pg-rise;
+}
+@keyframes pg-fade {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+@keyframes pg-rise {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@layer components {
+  /* Cards that open something lift slightly on hover. */
+  .lift {
+    transition:
+      transform var(--duration-base) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out),
+      border-color var(--duration-base) var(--ease-out);
+  }
+  @media (hover: hover) {
+    .lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgb(24 28 20 / 7%);
+      border-color: #d6d8d0;
+    }
+  }
+  .lift:active {
+    transform: translateY(0) scale(0.995);
+  }
+  /* Inputs: a soft ring that grows in on focus. */
+  .focus-ring {
+    transition:
+      box-shadow var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+  .focus-ring:focus-visible,
+  .focus-ring:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgb(77 96 66 / 14%);
+  }
+  .kbd {
+    display: inline-flex;
+    min-width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--surface);
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--foreground-secondary);
+  }
+  /* Very faint grain for large hero surfaces only. */
+  .grain {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.035 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+}
+
+@keyframes pg-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+.shake {
+  animation: pg-shake 420ms var(--ease-out) both;
+}
+
+@keyframes pg-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--surface-muted) 0%, #f7f7f4 40%, var(--surface-muted) 80%);
+  background-size: 200% 100%;
+  animation: pg-shimmer 1.6s linear infinite;
+}
+
+@keyframes pg-pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 rgb(77 96 66 / 35%);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgb(77 96 66 / 0%);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(77 96 66 / 0%);
+  }
+}
+.pulse-dot {
+  animation: pg-pulse-dot 1.8s var(--ease-out) infinite;
+}
+
+/* Respect the OS setting, and the in-app "Reduce motion" preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+html[data-motion="reduced"]::view-transition-old(*),
+html[data-motion="reduced"]::view-transition-new(*),
+html[data-motion="reduced"]::view-transition-group(*) {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}

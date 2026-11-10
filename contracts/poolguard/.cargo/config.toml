@@ -1,0 +1,6 @@
+# near-sdk 5.30 gates its host bindings (including env::panic_str and hashing)
+# behind `--cfg near`. cargo-near sets this automatically; plain cargo does not.
+# Without it, `require!` falls back to a Rust panic and the VM returns only
+# "WebAssembly trap", losing every structured denial code.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "near"]

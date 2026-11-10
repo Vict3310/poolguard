@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+.pnpm-store/
+.tools/
+
+# build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# contract artifacts
+contracts/**/target/
+contracts/**/res/
+
+# env + secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+!.env.*.example
+*.pem
+*.key
+
+# local data
+.data/
+uploads/
+.tmp/
+*.log
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
