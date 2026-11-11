@@ -25,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DrawnCheck } from "@/components/ui/drawn-check";
 import { destinationAfterSignIn } from "@/lib/onboarding";
+import { api, ApiError } from "@/lib/api";
+import { LEGAL_VERSIONS } from "@poolguard/shared";
 import { feedback } from "@/lib/feedback";
 import { STAGE_COPY, useWalletSignIn, type SignInStage } from "@/lib/use-wallet-sign-in";
 import { duration, ease, rise, spring, stagger } from "@/lib/motion";
@@ -71,11 +73,22 @@ function LoginScreen() {
   const reason = REASONS[params.get("reason") ?? ""];
   const [sandboxStage, setSandboxStage] = React.useState<"idle" | "working" | "success">("idle");
   const [sandboxError, setSandboxError] = React.useState<string | null>(null);
+  const [sandboxErrorCode, setSandboxErrorCode] = React.useState<string | null>(null);
+  const [agreed, setAgreed] = React.useState(false);
+  const agreedRef = React.useRef(false);
+  agreedRef.current = agreed;
   const leaving = React.useRef(false);
 
   const goIn = React.useCallback(async () => {
     if (leaving.current) return;
     leaving.current = true;
+    // Record the Terms/Privacy acceptance given on this screen.
+    if (agreedRef.current) {
+      await api("/account/consent", {
+        method: "POST",
+        body: JSON.stringify({ terms_version: LEGAL_VERSIONS.terms, privacy_version: LEGAL_VERSIONS.privacy }),
+      }).catch(() => undefined);
+    }
     await queryClient.invalidateQueries();
     const destination = await destinationAfterSignIn(next);
     // Let the success state register before the route changes.
@@ -103,6 +116,7 @@ function LoginScreen() {
     } catch (error) {
       setSandboxStage("idle");
       setSandboxError(error instanceof Error ? error.message : "The sandbox session could not start.");
+      setSandboxErrorCode(error instanceof ApiError ? error.code : null);
       feedback("error");
     }
   };
@@ -206,11 +220,23 @@ function LoginScreen() {
             </AnimatePresence>
 
             <motion.div variants={rise} className="mt-7">
-              {loading ? (
+              {wallet.errorCode === "ACCOUNT_NOT_ALLOWED" || sandboxErrorCode === "ACCOUNT_NOT_ALLOWED" ? (
+                <InviteOnly
+                  onBack={() => {
+                    wallet.reset();
+                    setSandboxError(null);
+                    setSandboxErrorCode(null);
+                  }}
+                />
+              ) : wallet.stage === "review" && wallet.challenge ? (
+                <MessageReview message={wallet.challenge.message} onSign={() => void wallet.confirm()} onCancel={wallet.reset} />
+              ) : loading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-12 w-full" />
                   <Skeleton className="h-24 w-full" />
                 </div>
+              ) : !agreed ? (
+                <ConsentGate agreed={agreed} onChange={setAgreed} />
               ) : sandbox ? (
                 <SandboxPanel
                   enabled={Boolean(meta?.devSessionEnabled)}
@@ -231,6 +257,15 @@ function LoginScreen() {
                   onSandbox={() => void startSandbox()}
                 />
               )}
+              {agreed && wallet.stage !== "review" ? (
+                <p className="mt-3 text-[11px] text-[var(--foreground-muted)]">
+                  You agreed to the <Link href="/terms" className="underline underline-offset-2">Terms</Link> and{" "}
+                  <Link href="/privacy" className="underline underline-offset-2">Privacy Policy</Link>.{" "}
+                  <button type="button" className="underline underline-offset-2" onClick={() => setAgreed(false)}>
+                    Change
+                  </button>
+                </p>
+              ) : null}
             </motion.div>
 
             <motion.ol variants={rise} className="mt-8 grid grid-cols-3 gap-2" aria-label="Sign-in steps">
@@ -284,6 +319,7 @@ function stepReached(stage: SignInStage, index: number): boolean {
     idle: -1,
     error: -1,
     connecting: 0,
+    review: 1,
     signing: 1,
     verifying: 1,
     success: 3,
@@ -356,7 +392,7 @@ function WalletPanel({
         stage={stage === "error" ? "idle" : stage}
         idleLabel={stage === "error" ? "Try again" : "Connect a wallet"}
         idleIcon={Wallet}
-        workingLabel={stage === "idle" || stage === "error" || stage === "success" ? "" : STAGE_COPY[stage]}
+        workingLabel={stage === "connecting" || stage === "signing" || stage === "verifying" ? STAGE_COPY[stage] : ""}
         onClick={() => {
           if (stage === "error") onRetry();
           onSignIn();
@@ -421,8 +457,8 @@ function StageButton({
       whileTap={{ scale: 0.97 }}
       transition={spring.snappy}
       className={cn(
-        "relative flex h-12 w-full items-center justify-center overflow-hidden rounded-[10px] text-[15px] font-medium text-white shadow-[0_1px_2px_rgb(24_28_20_/_12%),0_8px_20px_rgb(24_28_20_/_10%)] transition-colors duration-200",
-        success ? "bg-[var(--success)]" : "bg-[var(--primary)] hover:bg-[var(--primary-hover)]",
+        "relative flex h-12 w-full items-center justify-center overflow-hidden rounded-[14px] text-[15px] font-medium text-[var(--action-foreground)] shadow-[inset_0_1px_0_rgb(255_255_255_/_35%),0_8px_24px_rgb(132_134_245_/_28%)] transition-colors duration-200",
+        success ? "bg-[var(--success)]" : "bg-[var(--action)] hover:bg-[var(--action-hover)]",
         working && "cursor-progress",
       )}
     >
@@ -494,6 +530,85 @@ function LoginSkeleton() {
         <Skeleton className="h-10 w-3/4" />
         <Skeleton className="h-12 w-full" />
       </div>
+    </div>
+  );
+}
+
+/** Terms and Privacy agreement shown before any sign-in control. */
+function ConsentGate({ agreed, onChange }: { agreed: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-4">
+      <p className="text-[14px] font-medium">Before you sign in</p>
+      <ul className="mt-2 space-y-1.5 text-[13px] leading-5 text-[var(--foreground-secondary)]">
+        <li>• PoolGuard runs on NEAR testnet. Tokens have no monetary value and the software is not audited.</li>
+        <li>• Task names and payments are written on a public blockchain, permanently.</li>
+        <li>• Agents are AI and can make mistakes; the contract, not the AI, controls spending.</li>
+      </ul>
+      <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-[10px] bg-[var(--surface-muted)] p-3 text-[13px] leading-5">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(event) => onChange(event.target.checked)}
+          className="mt-0.5 size-4 shrink-0 accent-[var(--action)]"
+        />
+        <span>
+          I’m 18 or older and I agree to the{" "}
+          <Link href="/terms" target="_blank" className="font-medium text-[var(--action)] underline underline-offset-2">
+            Terms of Use
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" target="_blank" className="font-medium text-[var(--action)] underline underline-offset-2">
+            Privacy Policy
+          </Link>
+          .
+        </span>
+      </label>
+    </div>
+  );
+}
+
+/** Shows the exact NEP-413 message before the wallet is asked to sign it. */
+function MessageReview({ message, onSign, onCancel }: { message: string; onSign: () => void; onCancel: () => void }) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-4">
+        <p className="text-[14px] font-medium">You’re about to sign this message</p>
+        <pre className="mono mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-[var(--surface-muted)] p-3 text-[11px] leading-5 text-[var(--foreground-secondary)]">
+          {message}
+        </pre>
+        <ul className="mt-3 space-y-1 text-[12px] leading-5 text-[var(--foreground-secondary)]">
+          <li>• It proves you own this account. It is <strong>not a transaction</strong>.</li>
+          <li>• Signing costs nothing and <strong>moves no funds</strong>.</li>
+          <li>• Your wallet should show the same text. If it doesn’t, cancel.</li>
+        </ul>
+      </div>
+      <Button size="lg" variant="action" className="w-full" onClick={onSign}>
+        <PenLine /> Sign in your wallet
+      </Button>
+      <Button variant="ghost" className="w-full" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
+  );
+}
+
+/** Shown when the account is not on the sign-in allowlist. */
+function InviteOnly({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <span className="flex size-10 items-center justify-center rounded-full bg-[var(--action-soft)] text-[var(--action)]">
+        <KeyRound className="size-5" />
+      </span>
+      <h2 className="mt-4 text-[18px] font-semibold">Access is invite-only for now</h2>
+      <p className="mt-2 text-[14px] leading-6 text-[var(--foreground-secondary)]">
+        This deployment only lets invited NEAR accounts sign in while it’s being tested. Nothing was signed or spent.
+      </p>
+      <p className="mt-2 text-[13px] text-[var(--foreground-secondary)]">
+        To ask for access, <Link href="/contact" className="font-medium text-[var(--action)] underline underline-offset-2">contact the operator</Link>.
+      </p>
+      <Button variant="secondary" className="mt-4" onClick={onBack}>
+        Try a different account
+      </Button>
     </div>
   );
 }

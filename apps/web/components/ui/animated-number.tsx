@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { animate, useReducedMotion } from "motion/react";
+import { animate } from "motion/react";
+import { useMotionReduced } from "@/components/preferences-provider";
 import { near } from "@/lib/utils";
 
 /**
@@ -19,7 +20,7 @@ export function AnimatedNear({
   duration?: number;
 }) {
   const exact = near(yocto);
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const [text, setText] = React.useState(exact);
   const previous = React.useRef<number | null>(null);
 
@@ -54,7 +55,7 @@ export function AnimatedNear({
 
 /** Counts an integer up or down (event counts, operation totals). */
 export function AnimatedInteger({ value, className }: { value: number; className?: string }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const [display, setDisplay] = React.useState(value);
   const previous = React.useRef(value);
   React.useEffect(() => {

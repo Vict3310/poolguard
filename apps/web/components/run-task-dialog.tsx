@@ -102,7 +102,9 @@ export function RunTaskDialog({
               <p className="mt-2 text-[13px] font-medium">Live agents</p>
               <p className="mt-1 text-[11px] leading-4 text-[var(--foreground-secondary)]">
                 {meta?.aiConfigured
-                  ? `OpenAI-compatible model · ${meta.aiModel}`
+                  ? meta.aiPrivateInference
+                    ? `Private inference on NEAR AI Cloud (TEE) · ${meta.aiModel} · every response signature is verified`
+                    : `OpenAI-compatible model · ${meta.aiModel}`
                   : "Unavailable: AI_API_KEY is not configured."}
               </p>
             </button>

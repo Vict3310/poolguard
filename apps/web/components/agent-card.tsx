@@ -2,6 +2,8 @@
 
 import { Bot, KeyRound, ShieldCheck } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
+import { useAuth } from "@/components/auth-provider";
+import { CustodyBadge, PrivateInferenceBadge } from "@/components/trust-badges";
 import { near, relative, shortId } from "@/lib/utils";
 import type { Agent, Run } from "@/lib/types";
 
@@ -32,6 +34,8 @@ function runState(agent: Agent, run: Run | undefined): { label: string; detail: 
 
 export function AgentCard({ agent, run }: { agent: Agent; run?: Run }) {
   const state = runState(agent, run);
+  const { meta } = useAuth();
+  const custody = meta?.workerAccounts.find((worker) => worker.accountId === agent.accountId)?.custody;
   return (
     <section
       className={`workspace-panel lift relative flex min-w-0 flex-col overflow-hidden p-4 sm:p-5 ${run?.status === "running" ? "border-[var(--info)]/30" : ""}`}
@@ -93,9 +97,8 @@ export function AgentCard({ agent, run }: { agent: Agent; run?: Run }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[var(--border)] pt-3 text-[10px] text-[var(--foreground-muted)]">
-        <span className="inline-flex items-center gap-1">
-          <KeyRound className="size-3" /> Restricted key
-        </span>
+        <CustodyBadge custody={custody} />
+        <PrivateInferenceBadge run={run} />
         <span className={agent.keyConfigured ? "inline-flex items-center gap-1 text-[var(--success)]" : "text-[var(--warning)]"}>
           {agent.keyConfigured ? <ShieldCheck className="size-3" /> : null}
           {agent.keyConfigured ? "Signing configured" : "Signing key missing"}

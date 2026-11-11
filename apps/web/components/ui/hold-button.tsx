@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { motion, useAnimationControls, useReducedMotion } from "motion/react";
+import { motion, useAnimationControls } from "motion/react";
+import { useMotionReduced } from "@/components/preferences-provider";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { feedback } from "@/lib/feedback";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ export function HoldButton({
   size = "sm",
   ...props
 }: Omit<ButtonProps, "onClick"> & { onConfirm: () => void; holdMs?: number; hint?: string }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const controls = useAnimationControls();
   const timer = React.useRef<number | null>(null);
   const [holding, setHolding] = React.useState(false);

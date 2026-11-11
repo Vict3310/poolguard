@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseDotenv } from "dotenv";
-import { KeyPair } from "near-api-js";
+import { KeyPair, baseEncode } from "near-api-js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(HERE, "..");
@@ -352,6 +352,26 @@ export function validateTestnetConfig(env, { mode = "preflight", envFile = null 
   for (const slot of [1, 2]) {
     const prefix = slot === 1 ? "WORKER_ONE" : "WORKER_TWO";
     const accountId = ensureAccount(report, env, `${prefix}_ACCOUNT_ID`, `${prefix}_ACCOUNT_ID`);
+    // OutLayer custody: the key never leaves OutLayer's TEE; the worker signs
+    // through an API key and the account is the wallet's implicit account.
+    if (value(env, `${prefix}_CUSTODY`).toLowerCase() === "outlayer") {
+      const apiKey = value(env, `${prefix}_OUTLAYER_API_KEY`);
+      if (!apiKey) {
+        addCheck(report, "error", `${prefix}_OUTLAYER_API_KEY`, `${prefix}_OUTLAYER_API_KEY is required when ${prefix}_CUSTODY=outlayer.`);
+        continue;
+      }
+      if (!accountId || !/^[0-9a-f]{64}$/.test(accountId)) {
+        addCheck(report, "error", `${prefix}_IMPLICIT_ACCOUNT`, `${prefix}_ACCOUNT_ID must be the OutLayer wallet's 64-character implicit account.`);
+        continue;
+      }
+      if (value(env, `${prefix}_PRIVATE_KEY`)) {
+        addCheck(report, "warn", `${prefix}_UNUSED_PRIVATE_KEY`, `${prefix}_PRIVATE_KEY is ignored under OutLayer custody; remove it.`);
+      }
+      const publicKey = `ed25519:${baseEncode(Buffer.from(accountId, "hex"))}`;
+      workerKeys.push({ slot, accountId, publicKey, custody: "outlayer", apiKey });
+      addCheck(report, "ok", `WORKER_${slot}_CUSTODY`, `Worker ${slot} signs through OutLayer TEE custody as ${accountId} (${publicKey}).`);
+      continue;
+    }
     const privateKey = requireValue(
       report,
       env,
@@ -527,6 +547,72 @@ function yoctoFromConfig(value) {
  * On-chain checks. This is read-only and safe to run before the app services
  * are started.
  */
+/** OutLayer custody worker: wallet address, on-chain key, gas balance and policy. */
+async function checkCustodyWorker(env, report, worker, rpcUrl, fetchImpl) {
+  const label = `WORKER_${worker.slot}`;
+  const apiUrl = (value(env, "OUTLAYER_API_URL") || "https://testnet-api.outlayer.ai").replace(/\/+$/, "");
+  const get = async (path) => {
+    const response = await fetchImpl(`${apiUrl}${path}`, {
+      headers: { authorization: `Bearer ${worker.apiKey}`, accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const text = await response.text();
+    let body = {};
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      body = {};
+    }
+    return { status: response.status, body };
+  };
+  try {
+    const address = await get("/wallet/v1/address?chain=near");
+    if (address.status !== 200) {
+      addCheck(report, "error", `${label}_OUTLAYER_AUTH`, `OutLayer rejected the API key (HTTP ${address.status}).`);
+      return;
+    }
+    if (address.body.address !== worker.accountId) {
+      addCheck(report, "error", `${label}_OUTLAYER_ADDRESS`, `OutLayer wallet address ${address.body.address ?? "unknown"} does not match ${worker.accountId}.`);
+      return;
+    }
+    addCheck(report, "ok", `${label}_OUTLAYER_WALLET`, `OutLayer wallet ${worker.accountId} answers for this API key.`);
+    const policy = await get("/wallet/v1/policy");
+    const hasPolicy = policy.status === 200 && policy.body && Object.keys(policy.body).length > 0 && !policy.body.error;
+    addCheck(
+      report,
+      hasPolicy ? "ok" : "warn",
+      `${label}_OUTLAYER_POLICY`,
+      hasPolicy
+        ? "OutLayer policy is set; it is enforced in the TEE before every signature."
+        : "No OutLayer policy found. Set per-transaction and daily limits through the wallet's handoff URL.",
+    );
+  } catch (error) {
+    addCheck(report, "error", `${label}_OUTLAYER_UNREACHABLE`, `Cannot reach OutLayer at ${apiUrl}: ${error.message}`);
+    return;
+  }
+  try {
+    await rpcCall(
+      rpcUrl,
+      "query",
+      { request_type: "view_access_key", finality: "final", account_id: worker.accountId, public_key: worker.publicKey },
+      fetchImpl,
+    );
+    const account = await viewAccount(rpcUrl, worker.accountId, fetchImpl);
+    const balance = BigInt(account?.amount ?? "0");
+    const minimum = 50_000_000_000_000_000_000_000n; // 0.05 NEAR for gas
+    addCheck(
+      report,
+      balance >= minimum ? "ok" : "error",
+      `${label}_GAS_BALANCE`,
+      balance >= minimum
+        ? `${worker.accountId} holds enough NEAR for gas.`
+        : `${worker.accountId} needs at least 0.05 NEAR for gas; send testnet NEAR to it.`,
+    );
+  } catch (error) {
+    addCheck(report, "error", `${label}_IMPLICIT_ACCOUNT_MISSING`, `${worker.accountId} is not on chain yet; fund it with testnet NEAR first (${error.message}).`);
+  }
+}
+
 export async function checkChain(env, report, { fetchImpl = fetch } = {}) {
   report.chainChecked = true;
   const rpcUrl = value(env, "NEAR_RPC_URL");
@@ -690,6 +776,10 @@ export async function checkChain(env, report, { fetchImpl = fetch } = {}) {
   }
 
   for (const worker of report.derivedWorkerKeys) {
+    if (worker.custody === "outlayer") {
+      await checkCustodyWorker(env, report, worker, rpcUrl, fetchImpl);
+      continue;
+    }
     try {
       const access = await rpcCall(
         rpcUrl,

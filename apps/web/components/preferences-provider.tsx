@@ -97,6 +97,16 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   );
 }
 
+/**
+ * True when motion should be reduced: the OS asks for it, or the user picked
+ * "Reduced" in Settings. Use this instead of motion's useReducedMotion, which only
+ * reads the OS setting.
+ */
+export function useMotionReduced(): boolean {
+  const value = React.useContext(PreferencesContext);
+  return value?.reducedMotion ?? false;
+}
+
 export function usePreferences(): PreferencesContextValue {
   const value = React.useContext(PreferencesContext);
   if (!value) throw new Error("usePreferences must be used inside PreferencesProvider");

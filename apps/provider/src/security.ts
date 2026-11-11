@@ -4,6 +4,8 @@ import {
   providerAuthChallengeHash,
   type ChainOperationView,
   type ProviderAuth,
+  bytesToHex,
+  nep413Hash,
 } from "@poolguard/shared";
 
 export const CLOCK_SKEW_MS = 60_000;
@@ -76,9 +78,25 @@ export function verifyBuyerAuth(input: {
     nonce: input.auth.nonce,
   });
 
+  // NEP-413: custody wallets (OutLayer) sign the digest's hex as a standard NEAR
+  // signed message. The key is still the contract-registered agent key.
+  let signedBytes: Uint8Array = digest;
+  if (input.auth.scheme === "nep413") {
+    let nonceBytes: Uint8Array;
+    try {
+      nonceBytes = base64ToBytes(input.auth.nonce);
+    } catch {
+      return { ok: false, code: "AUTH_MALFORMED", message: "NEP-413 nonce is not valid base64" };
+    }
+    if (nonceBytes.length !== 32) {
+      return { ok: false, code: "AUTH_MALFORMED", message: "NEP-413 nonce must be 32 bytes" };
+    }
+    signedBytes = nep413Hash({ message: bytesToHex(digest), nonce: nonceBytes, recipient: input.domain });
+  }
+
   try {
     // Verify with the registered public key, not a keypair reconstructed from it.
-    const verified = PublicKey.fromString(agent.public_key).verify(digest, signature);
+    const verified = PublicKey.fromString(agent.public_key).verify(signedBytes, signature);
     if (!verified) {
       return { ok: false, code: "BUYER_NOT_AUTHORIZED", message: "Signature did not verify" };
     }

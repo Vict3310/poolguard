@@ -23,11 +23,11 @@ export function Tooltip({
           side={side}
           sideOffset={6}
           className={cn(
-            "z-[60] max-w-[280px] rounded-[6px] bg-[var(--foreground)] px-2.5 py-1.5 text-[12px] leading-4 text-white shadow-[var(--shadow-popover)]",
+            "z-[60] max-w-[280px] rounded-[10px] border border-[var(--border-strong)] bg-[#17171d] px-2.5 py-1.5 text-[12px] leading-4 text-[var(--foreground)] shadow-[var(--shadow-popover)]",
           )}
         >
           {content}
-          <TooltipPrimitive.Arrow className="fill-[var(--foreground)]" />
+          <TooltipPrimitive.Arrow className="fill-[#17171d]" />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>

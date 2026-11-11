@@ -4,6 +4,7 @@ import * as React from "react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import {
+  ShieldCheck,
   Activity,
   BadgeCheck,
   Ban,
@@ -58,6 +59,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   "demo.scenario.started": Sparkles,
   "demo.scenario.finished": Sparkles,
   "sync.completed": RefreshCw,
+  "ai.private_inference": ShieldCheck,
 };
 
 const TONE: Record<string, string> = {

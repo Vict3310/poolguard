@@ -4,6 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useAnimationControls } from "motion/react";
 import {
+  Globe,
+  LockKeyhole,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
@@ -35,6 +37,29 @@ export const WIZARD_STEPS = [
   { id: "budget", title: "Budget", hint: "Limits on chain" },
   { id: "review", title: "Review", hint: "Check and fund" },
 ] as const;
+
+const UPLOAD_NOTICE_KEY = "poolguard:upload-notice";
+
+/** Plain statement of what funding moves and what can and can't be undone. */
+function FundingExplainer({ storageTotal, budget, sandbox }: { storageTotal: string | null; budget: string; sandbox: boolean }) {
+  return (
+    <div className="rounded-[10px] border border-[var(--warning)]/25 bg-[var(--warning-background)] p-3.5 text-[12px] leading-5 text-[var(--warning)]">
+      <p className="font-medium">What funding does</p>
+      <ul className="mt-1.5 space-y-1">
+        <li>
+          • Moves <strong>{budget || "the budget"} testNEAR</strong> plus{" "}
+          <strong>{storageTotal ? `${near(storageTotal)} testNEAR` : "the"} storage deposits</strong> from{" "}
+          {sandbox ? "the sandbox owner account" : "your wallet"} into the PoolGuard contract. Testnet tokens have no monetary value.
+        </li>
+        <li>• You can withdraw budget that isn’t reserved, at any time.</li>
+        <li>
+          • <strong>Can’t be undone:</strong> storage deposits are not refundable, payments to the provider are final, and
+          everything written on chain stays public.
+        </li>
+      </ul>
+    </div>
+  );
+}
 
 const STEP_FIELDS: Array<Array<keyof TaskFormValues | `documents.${number}.${"label" | "text"}`>> = [
   ["name", "objective"],
@@ -126,7 +151,7 @@ export function Stepper({ step, onJump }: { step: number; onJump?: (index: numbe
             >
               <div className="relative h-1 overflow-hidden rounded-full bg-[var(--surface-selected)]">
                 <motion.div
-                  className="absolute inset-y-0 left-0 bg-[var(--foreground)]"
+                  className={cn("absolute inset-y-0 left-0", current ? "bg-[var(--action)]" : "bg-[var(--foreground)]")}
                   initial={false}
                   animate={{ width: done ? "100%" : current ? "40%" : "0%" }}
                   transition={spring.gentle}
@@ -137,15 +162,15 @@ export function Stepper({ step, onJump }: { step: number; onJump?: (index: numbe
                   className={cn(
                     "flex size-5 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors duration-200",
                     done
-                      ? "border-[var(--foreground)] bg-[var(--foreground)] text-white"
+                      ? "border-[var(--action)] bg-[var(--action)] text-[var(--action-foreground)]"
                       : current
-                        ? "border-[var(--foreground)] text-[var(--foreground)]"
+                        ? "border-[var(--action)] bg-[var(--action-soft)] text-[var(--action)]"
                         : "border-[var(--border-strong)] text-[var(--foreground-muted)]",
                   )}
                 >
                   {done ? <Check className="size-3" /> : index + 1}
                 </span>
-                <span className={cn("text-[13px] font-medium", current || done ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)]")}>
+                <span className={cn("text-[13px] font-medium", current ? "text-[var(--action)]" : done ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)]")}>
                   {item.title}
                 </span>
               </div>
@@ -243,11 +268,35 @@ export function TaskWizard({
   const [direction, setDirection] = React.useState(1);
   const shake = useAnimationControls();
   const errors = form.formState.errors;
+  const [uploadNotice, setUploadNotice] = React.useState(false);
+  const [uploadNoticeError, setUploadNoticeError] = React.useState(false);
+  React.useEffect(() => {
+    try {
+      setUploadNotice(window.localStorage.getItem(UPLOAD_NOTICE_KEY) === "accepted");
+    } catch {
+      /* storage unavailable: ask again */
+    }
+  }, []);
+  const acceptUploadNotice = (value: boolean) => {
+    setUploadNotice(value);
+    setUploadNoticeError(false);
+    try {
+      if (value) window.localStorage.setItem(UPLOAD_NOTICE_KEY, "accepted");
+      else window.localStorage.removeItem(UPLOAD_NOTICE_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+  const custodyOutlayer = (meta?.workerAccounts ?? []).some((worker) => worker.custody === "outlayer");
 
   const go = async (target: number) => {
     if (target > step) {
       const fields = STEP_FIELDS[step] ?? [];
-      const ok = fields.length === 0 ? true : await form.trigger(fields as never, { shouldFocus: true });
+      let ok = fields.length === 0 ? true : await form.trigger(fields as never, { shouldFocus: true });
+      if (ok && step === 1 && !uploadNotice) {
+        ok = false;
+        setUploadNoticeError(true);
+      }
       if (!ok) {
         void shake.start({ x: [0, -7, 7, -5, 5, -2, 0], transition: { duration: 0.42 } });
         feedback("error");
@@ -330,8 +379,14 @@ export function TaskWizard({
                         placeholder="Supplier comparison — Q4"
                         {...form.register("name")}
                         aria-invalid={Boolean(errors.name)}
+                        aria-describedby="name-public"
                       />
                     </Field>
+                    <p id="name-public" className="-mt-3 flex items-start gap-2 rounded-[8px] bg-[var(--info-background)] px-3 py-2 text-[12px] leading-5 text-[var(--info)]">
+                      <Globe className="mt-0.5 size-3.5 shrink-0" />
+                      The task name is written on the NEAR blockchain, where it is public and permanent. Don’t include names,
+                      personal details or anything confidential.
+                    </p>
                     <Field
                       label="Objective"
                       htmlFor="objective"
@@ -358,6 +413,31 @@ export function TaskWizard({
                           Load adversarial fixture
                         </Button>
                       </div>
+                    </div>
+                    <div
+                      className={cn(
+                        "mt-4 rounded-[10px] border p-3.5 text-[12px] leading-5 transition-colors",
+                        uploadNoticeError ? "border-[var(--danger)]/40 bg-[var(--danger-background)]" : "border-[var(--border)] bg-[var(--surface-muted)]",
+                      )}
+                    >
+                      <p className="font-medium text-[var(--foreground)]">Where your documents go</p>
+                      <p className="mt-1 text-[var(--foreground-secondary)]">
+                        Documents are encrypted at rest in PoolGuard’s database, then sent to the AI model
+                        {meta?.aiPrivateInference ? " (inside NEAR AI Cloud’s enclave)" : ""} and to the extraction provider so the agents
+                        can work. They are never written on chain. You can delete them later in Settings.
+                      </p>
+                      <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-[var(--foreground)]">
+                        <input
+                          type="checkbox"
+                          checked={uploadNotice}
+                          onChange={(event) => acceptUploadNotice(event.target.checked)}
+                          className="mt-0.5 size-4 shrink-0 accent-[var(--action)]"
+                        />
+                        I won’t upload personal, sensitive or confidential information, or anything I’m not allowed to share.
+                      </label>
+                      {uploadNoticeError ? (
+                        <p role="alert" className="mt-1.5 text-[var(--danger)]">Please confirm this before continuing.</p>
+                      ) : null}
                     </div>
                     <div className="mt-4 space-y-4">
                       <AnimatePresence initial={false}>
@@ -463,11 +543,11 @@ export function TaskWizard({
                             }}
                             className={cn(
                               "relative rounded-[10px] border p-3 text-left transition-colors duration-150",
-                              active ? "border-[var(--foreground)] bg-[var(--surface)]" : "border-[var(--border)] bg-[var(--surface)] hover:border-[#d6d8d0]",
+                              active ? "border-[var(--action)] bg-[var(--action-soft)]" : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]",
                             )}
                           >
                             {active ? (
-                              <motion.span layoutId="preset-ring" className="absolute inset-0 rounded-[10px] ring-2 ring-[var(--foreground)]" transition={spring.glide} />
+                              <motion.span layoutId="preset-ring" className="absolute inset-0 rounded-[10px] ring-2 ring-[var(--action)]" transition={spring.glide} />
                             ) : null}
                             <span className="relative block text-[13px] font-medium">{preset.label}</span>
                             <span className="financial-value relative mt-0.5 block text-[12px] text-[var(--foreground-secondary)]">
@@ -538,9 +618,23 @@ export function TaskWizard({
                         </div>
                       ))}
                     </div>
-                    <p className="text-[11px] leading-5 text-[var(--foreground-muted)]">
-                      Worker keys are restricted function-call keys. Their allowance limits gas only; the contract policy limits spending.
-                    </p>
+                    <FundingExplainer storageTotal={setup.storageTotal} budget={values.budget_near ?? ""} sandbox={Boolean(meta?.sandbox)} />
+                    {custodyOutlayer ? (
+                      <div className="rounded-[10px] border border-[var(--border)] p-3.5 text-[12px] leading-5 text-[var(--foreground-secondary)]">
+                        <p className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+                          <LockKeyhole className="size-3.5 text-[var(--action)]" /> Agent keys are held by a third party
+                        </p>
+                        <p className="mt-1">
+                          This deployment keeps the agents’ signing keys in OutLayer’s secure enclave, not on PoolGuard’s servers.
+                          OutLayer checks its own spending policy before signing. If OutLayer is unavailable, agents can’t sign
+                          until it returns; nothing is paid twice, and your task funds stay in the contract under your control.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] leading-5 text-[var(--foreground-muted)]">
+                        Worker keys are restricted function-call keys. Their allowance limits gas only; the contract policy limits spending.
+                      </p>
+                    )}
                   </div>
                 ) : null}
               </motion.div>
@@ -575,11 +669,11 @@ export function TaskWizard({
             </Button>
           )}
           {last ? (
-            <Button type="submit" loading={setup.create.isPending} size="lg">
+            <Button type="submit" variant="action" loading={setup.create.isPending} size="lg">
               {setup.create.isPending ? (meta?.sandbox ? "Creating and funding…" : "Creating…") : "Review and fund task"}
             </Button>
           ) : (
-            <Button type="submit" size="lg">
+            <Button type="submit" variant="action" size="lg">
               Continue <ArrowRight />
             </Button>
           )}
@@ -607,7 +701,7 @@ function ReviewRow({ label, value, mono, onEdit }: { label: string; value: strin
       <dd className="flex min-w-0 items-baseline gap-3">
         <span className={cn("truncate text-right", mono && "financial-value")}>{value}</span>
         {onEdit ? (
-          <button type="button" onClick={onEdit} className="shrink-0 text-[12px] text-[var(--accent)] hover:underline">
+          <button type="button" onClick={onEdit} className="shrink-0 text-[12px] text-[var(--action)] hover:text-[var(--action-hover)] hover:underline">
             Edit
           </button>
         ) : null}
@@ -725,7 +819,7 @@ export function FundingReview({ setup }: { setup: TaskSetup }) {
                 <ShieldCheck /> Fund sandbox task
               </Button>
             ) : (
-              <Button className="mt-5 w-full sm:w-auto" size="lg" onClick={() => setup.fund.mutate()} loading={setup.fund.isPending}>
+              <Button className="mt-5 w-full sm:w-auto" variant="action" size="lg" onClick={() => setup.fund.mutate()} loading={setup.fund.isPending}>
                 <Wallet /> {setup.fund.isPending ? "Waiting for your wallet…" : "Approve in wallet"}
               </Button>
             )}

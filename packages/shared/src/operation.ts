@@ -1,5 +1,5 @@
 import { canonicalize } from "./canonical.js";
-import { sha256Hex } from "./sha256.js";
+import { bytesToHex, sha256Bytes, sha256Hex } from "./sha256.js";
 
 export const OPERATION_DOMAIN = "poolguard/operation/v1";
 export const REQUEST_HASH_DOMAIN = "poolguard/provider-request/v1";
@@ -98,6 +98,7 @@ export const PROVIDER_AUTH_HEADERS = {
   signature: "x-poolguard-signature",
   issuedAt: "x-poolguard-issued-at",
   nonce: "x-poolguard-nonce",
+  scheme: "x-poolguard-auth-scheme",
 } as const;
 
 export function providerAuthChallengeHash(input: ProviderAuthPayloadInput): Uint8Array {
@@ -105,4 +106,39 @@ export function providerAuthChallengeHash(input: ProviderAuthPayloadInput): Uint
   const out = new Uint8Array(32);
   for (let i = 0; i < 32; i++) out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return out;
+}
+
+/** NEP-413 tag: 2^31 + 413, prefixed to every signed-message payload. */
+const NEP413_TAG = 2_147_484_061;
+
+function borshString(value: string): Uint8Array {
+  const bytes = new TextEncoder().encode(value);
+  const out = new Uint8Array(4 + bytes.length);
+  new DataView(out.buffer).setUint32(0, bytes.length, true);
+  out.set(bytes, 4);
+  return out;
+}
+
+/**
+ * SHA-256 of a NEP-413 payload `{ message, nonce, recipient, callbackUrl: None }`
+ * with its tag prefix: the exact bytes a NEAR wallet signs for `signMessage`.
+ */
+export function nep413Hash(input: { message: string; nonce: Uint8Array; recipient: string }): Uint8Array {
+  if (input.nonce.length !== 32) throw new Error("NEP-413 nonce must be 32 bytes");
+  const tag = new Uint8Array(4);
+  new DataView(tag.buffer).setUint32(0, NEP413_TAG, true);
+  const parts = [tag, borshString(input.message), input.nonce, borshString(input.recipient), new Uint8Array([0])];
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  return sha256Bytes(bytes);
+}
+
+/** The message text a custody wallet signs for provider auth: the challenge digest in hex. */
+export function providerAuthNep413Message(input: ProviderAuthPayloadInput): string {
+  return bytesToHex(providerAuthChallengeHash(input));
 }

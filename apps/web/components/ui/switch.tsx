@@ -33,13 +33,13 @@ export function Switch({
       }}
       className={cn(
         "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 disabled:opacity-50",
-        checked ? "bg-[var(--accent)]" : "bg-[var(--surface-selected)]",
+        checked ? "bg-[var(--action)]" : "bg-[var(--surface-selected)]",
       )}
     >
       <motion.span
         layout
         transition={spring.snappy}
-        className={cn("block size-5 rounded-full bg-white shadow-[0_1px_3px_rgb(24_28_20_/_25%)]", checked ? "ml-auto" : "ml-0")}
+        className={cn("block size-5 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0_/_45%)]", checked ? "ml-auto" : "ml-0")}
       />
     </button>
   );
@@ -59,7 +59,7 @@ export function Segmented<T extends string>({
   id: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-[9px] bg-[var(--surface-selected)] p-0.5">
+    <div role="radiogroup" aria-label={label} className="inline-flex gap-1 rounded-[14px] border border-[var(--border)] bg-[#0c0c10] p-1">
       {options.map((option) => {
         const active = option.value === value;
         return (
@@ -73,14 +73,14 @@ export function Segmented<T extends string>({
               feedback("select");
             }}
             className={cn(
-              "relative h-8 rounded-[7px] px-3 text-[13px] transition-colors duration-150",
-              active ? "font-medium text-[var(--foreground)]" : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)]",
+              "relative h-9 rounded-[10px] px-4 text-[14px] transition-colors duration-150",
+              active ? "font-medium text-[var(--action)]" : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)]",
             )}
           >
             {active ? (
               <motion.span
                 layoutId={`${id}-indicator`}
-                className="absolute inset-0 rounded-[7px] bg-[var(--surface)] shadow-[0_1px_2px_rgb(24_28_20_/_10%)]"
+                className="absolute inset-0 rounded-[10px] bg-[var(--action-soft)] shadow-[inset_0_1px_0_rgb(255_255_255_/_6%),inset_0_0_0_1px_rgb(165_166_246_/_14%)]"
                 transition={spring.glide}
               />
             ) : null}

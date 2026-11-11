@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # postinstall builds shared, db (prisma generate) and agent-runtime.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  contract:
+    name: Contract tests and sandbox proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/poolguard
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm contract:test
+      - run: pnpm contract:build
+      - name: Print WASM hash (set POOLGUARD_EXPECTED_WASM_HASH to this after deploying)
+        run: |
+          node -e '
+            const { createHash } = require("node:crypto");
+            const bytes = require("node:fs").readFileSync("contracts/poolguard/res/poolguard.wasm");
+            const digest = createHash("sha256").update(bytes).digest();
+            const A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+            let n = BigInt("0x" + digest.toString("hex")), s = "";
+            while (n > 0n) { s = A[Number(n % 58n)] + s; n /= 58n; }
+            for (const b of digest) { if (b === 0) s = "1" + s; else break; }
+            console.log("code_hash (base58):", s);
+          '
+      # Deploys the fresh WASM to a local near-sandbox node and checks the
+      # financial boundaries against finalized state.
+      - run: pnpm contract:sandbox-test

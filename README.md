@@ -34,6 +34,10 @@ and remaining limitations.
 - A responsive Next.js application, a TypeScript SDK and a runnable example.
 - Four reproducible scenarios: permitted purchase, shared-budget race, malicious
   instruction/contract probe, and lost response recovery.
+- Optional defense in depth from the NEAR ecosystem: private agent inference on
+  **NEAR AI Cloud** (TEE, with per-response signature checks) and agent keys in
+  **OutLayer** enclave custody (policy-checked before signing). The contract stays
+  the final authority. See "NEAR ecosystem integrations" below.
 
 ## Architecture at a glance
 
@@ -186,6 +190,27 @@ The contract, provider, payments and recovery remain real; the model is not call
 Do not present a scripted run as a live AI execution. AI inference costs are outside
 the task budget and are not metered by PoolGuard.
 
+## NEAR ecosystem integrations
+
+**NEAR AI Cloud — private inference.** Point `AI_BASE_URL` at
+`https://cloud-api.near.ai/v1` (key from cloud.near.ai, a tool-calling model such
+as `deepseek/deepseek-v4.1-flash`). Agents then reason inside NEAR AI's TEEs. For
+every completion PoolGuard keeps only SHA-256 hashes of the exact request and
+response bytes, fetches NEAR AI's per-response signature, and checks that it binds
+those hashes and verifies against the signing key in NEAR AI's attestation report.
+The run shows "Private inference · n/n signed". PoolGuard does not itself verify
+the Intel TDX quote; NEAR AI's verifier does. `GET /ai/attestation` exposes the
+attestation summary.
+
+**OutLayer — agent keys in TEE custody.** With `WORKER_*_CUSTODY=outlayer`, the
+worker's NEAR key lives inside OutLayer's enclave and the worker signs through an
+API key. OutLayer enforces its wallet policy (spend caps, transaction types,
+freeze) before signing; the PoolGuard contract then enforces the task policy on
+chain — two independent limits on every purchase. Provider requests are signed as
+NEP-413 messages, verified against the contract-registered agent key. Run
+`node scripts/outlayer-setup.mjs` to register the wallets and update
+`.env.testnet`; `pnpm testnet:preflight` checks the wallets, gas and policy.
+
 ## Safety properties and limits
 
 - At-most-once **payout** per operation id, enforced by the contract.
@@ -197,8 +222,10 @@ the task budget and are not metered by PoolGuard.
   money. The conservation equation is documented in
   [CONTRACT_INVARIANTS.md](docs/CONTRACT_INVARIANTS.md).
 - The provider is operator-controlled and fixed-price; quotes are not signed.
-- Documents are encrypted at rest but decrypted for the worker and model.
-- Worker restricted keys are held in server environment variables; there is no HSM.
+- Documents are encrypted at rest but decrypted for the worker and model. With NEAR
+  AI Cloud the model sees them only inside a TEE, with signed responses.
+- Worker keys are either restricted keys in server environment variables or, with
+  OutLayer custody, sealed in OutLayer's TEE; there is no HSM in the default setup.
 - The demo provider, documents and prices are fixtures, not marketplace adoption.
 - Local sandbox transactions have no public explorer. Testnet hashes would be
   publicly inspectable after a real deployment.

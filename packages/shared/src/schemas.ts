@@ -263,6 +263,12 @@ export const providerAuthSchema = z.object({
   signature_base64: z.string().min(1).max(200),
   issued_at: z.string(),
   nonce: z.string().min(16).max(128),
+  /**
+   * "ed25519" (default): raw signature over the challenge digest, from a key the
+   * worker holds. "nep413": a NEP-413 signed message whose text is the digest in
+   * hex, used by custody wallets (OutLayer) that never expose a private key.
+   */
+  scheme: z.enum(["ed25519", "nep413"]).optional(),
 });
 export type ProviderAuth = z.infer<typeof providerAuthSchema>;
 

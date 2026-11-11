@@ -1,6 +1,6 @@
 import { loadRootEnv } from "./env.js";
 import { createPrismaClient, type Job } from "@poolguard/db";
-import { NearChain, signerMap } from "@poolguard/agent-runtime";
+import { NearChain, signerMap, custodyMap } from "@poolguard/agent-runtime";
 import { loadWorkerConfig } from "./config.js";
 import { JobQueue } from "./queue.js";
 import { handleRecoverOperationJob, handleRunAgentJob, type WorkerDeps } from "./run-job.js";
@@ -19,6 +19,11 @@ async function main() {
     rpcUrl: config.nearRpcUrl,
     contractId: config.contractId,
     signers: signerMap(config),
+    custody: custodyMap(config),
+    // Custody transactions get their real hash only after OutLayer broadcasts.
+    onTxHashResolved: async (placeholder, txHash) => {
+      await prisma.chainTransaction.updateMany({ where: { txHash: placeholder }, data: { txHash } });
+    },
   });
   const deps: WorkerDeps = { prisma, chain, config };
   const queue = new JobQueue(prisma, config.workerId, config.jobLeaseSeconds);
@@ -137,6 +142,20 @@ async function main() {
       }
     }
   }
+
+  // Liveness for the status page, admin dashboard and stale-worker alert.
+  const startedAt = new Date();
+  const beat = () =>
+    void prisma.workerHeartbeat
+      .upsert({
+        where: { workerId: config.workerId },
+        update: { lastSeenAt: new Date(), activeJobs: active },
+        create: { workerId: config.workerId, startedAt, lastSeenAt: new Date(), activeJobs: active },
+      })
+      .catch(() => undefined);
+  beat();
+  const heartbeatTimer = setInterval(beat, 20_000);
+  heartbeatTimer.unref();
 
   // Periodically reap leases left behind by a crashed sibling process.
   const reaper = setInterval(() => {

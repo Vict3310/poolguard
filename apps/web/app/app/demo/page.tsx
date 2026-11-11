@@ -202,7 +202,7 @@ export default function DemoLabPage() {
                 Budget <span className="financial-value text-[var(--foreground-secondary)]">{near(selected.availableYocto)}</span>
               </span>
               <span>Policy enforced on chain</span>
-              <Link href={`/app/tasks/${selected.id}`} className="inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline">
+              <Link href={`/app/tasks/${selected.id}`} className="inline-flex items-center gap-1 font-medium text-[var(--action)] hover:text-[var(--action-hover)] hover:underline">
                 Open task <ArrowRight className="size-3" />
               </Link>
             </div>
@@ -263,7 +263,7 @@ export default function DemoLabPage() {
               ) : null}
               <Button
                 className="mt-4 w-full sm:w-auto"
-                variant={scenario.key === "B" || scenario.key === "D" ? "secondary" : "primary"}
+                variant={scenario.key === "B" || scenario.key === "D" ? "secondary" : "action"}
                 onClick={() => {
                   setError(null);
                   run.mutate(scenario.key);
@@ -397,7 +397,7 @@ export default function DemoLabPage() {
             <div className="border-t border-[var(--border)] px-5 py-3">
               <Link
                 href={`/app/tasks/${selected.id}`}
-                className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--accent)] hover:underline"
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--action)] hover:text-[var(--action-hover)] hover:underline"
               >
                 Inspect the full task, budget and operation evidence <ArrowRight className="size-3.5" />
               </Link>

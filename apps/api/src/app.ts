@@ -35,7 +35,14 @@ import {
   type PreparedTransaction,
 } from "@poolguard/agent-runtime/chain";
 import { recordAudit, toActivityEvent } from "./audit.js";
+import { fetchAttestation, isNearAiBaseUrl, type AttestationSummary } from "@poolguard/agent-runtime";
 import { AccountQuota, KeyedLock } from "./limits.js";
+import { HealthService } from "./health.js";
+import type { RouteContext } from "./routes/context.js";
+import { registerPlatformRoutes } from "./routes/platform.js";
+import { registerAccountRoutes } from "./routes/account.js";
+import { registerAdminRoutes } from "./routes/admin.js";
+import { LEGAL_VERSIONS, type LegalDocument } from "@poolguard/shared";
 import type { ApiConfig } from "./config.js";
 import {
   CSRF_COOKIE,
@@ -59,11 +66,12 @@ export interface ApiDeps {
   now?: () => Date;
 }
 
-interface SessionInfo {
+export interface SessionInfo {
   sessionId: string;
   userId: string;
   accountId: string;
   csrfHash: string;
+  suspended: boolean;
 }
 
 const taskInclude = {
@@ -197,8 +205,22 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
   const purchaseLocks = new KeyedLock();
   const chainActionQuota = new AccountQuota(config.apiChainActionsPerHour, 60 * 60_000, () => now().getTime());
   const allowedAccounts = new Set(config.authAllowedAccounts ?? []);
-  const accountAllowed = (accountId: string) =>
-    allowedAccounts.size === 0 || allowedAccounts.has(accountId.toLowerCase());
+  const adminAccounts = new Set(config.adminAccounts ?? []);
+  const operatorAccounts = new Set(config.operatorAccounts ?? []);
+  const isAdmin = (accountId: string) => adminAccounts.has(accountId.toLowerCase());
+  const isOperator = (accountId: string) => operatorAccounts.has(accountId.toLowerCase());
+  /**
+   * Sign-in allowlist: AUTH_ALLOWED_ACCOUNTS plus operator-managed AllowedAccount
+   * rows. When both are empty everyone may sign in. Admins can always sign in.
+   */
+  const accountAllowed = async (accountId: string): Promise<boolean> => {
+    const id = accountId.toLowerCase();
+    if (isAdmin(id) || allowedAccounts.has(id)) return true;
+    const rows = await prisma.allowedAccount.count().catch(() => 0);
+    if (allowedAccounts.size === 0 && rows === 0) return true;
+    if (rows === 0) return false;
+    return Boolean(await prisma.allowedAccount.findUnique({ where: { accountId: id } }).catch(() => null));
+  };
   const SSE_MAX_STREAMS_PER_ACCOUNT = 6;
   const SSE_SESSION_RECHECK_TICKS = 15;
   const openStreams = new Map<string, number>();
@@ -258,11 +280,16 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       include: { user: true },
     });
     if (!session || session.revokedAt || session.expiresAt.getTime() <= now().getTime()) return null;
+    // Keep "last active" fresh for the sessions list without a write per request.
+    if (!session.lastSeenAt || now().getTime() - session.lastSeenAt.getTime() > 5 * 60_000) {
+      void prisma.walletSession.update({ where: { id: session.id }, data: { lastSeenAt: now() } }).catch(() => undefined);
+    }
     return {
       sessionId: session.id,
       userId: session.userId,
       accountId: session.user.accountId,
       csrfHash: session.csrfHash,
+      suspended: Boolean(session.user.suspendedAt),
     };
   }
 
@@ -275,7 +302,37 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       reply.code(401).send({ error: "Sign in required", code: "UNAUTHENTICATED" });
       return null;
     }
+    if (session.suspended) {
+      reply.code(403).send({ error: "This account is suspended. Contact the operator.", code: "ACCOUNT_SUSPENDED" });
+      return null;
+    }
+    // Changes require the current Terms and Privacy versions. Data-rights routes
+    // (/account/*) and sign-out stay available so a user can always export or leave.
+    const path = request.url.split("?")[0] ?? "";
+    if (request.method !== "GET" && !path.startsWith("/account") && path !== "/auth/logout") {
+      const consent = await consentStatus(session.userId);
+      if (consent.required) {
+        reply.code(428).send({
+          error: "Please accept the current Terms of Use and Privacy Policy",
+          code: "CONSENT_REQUIRED",
+          versions: LEGAL_VERSIONS,
+        });
+        return null;
+      }
+    }
     return session;
+  }
+
+  async function consentStatus(userId: string) {
+    const records = await prisma.consentRecord.findMany({ where: { userId }, orderBy: { acceptedAt: "desc" } });
+    const accepted = (document: LegalDocument) => records.find((record) => record.document === document)?.version ?? null;
+    const terms = accepted("terms");
+    const privacy = accepted("privacy");
+    return {
+      required: terms !== LEGAL_VERSIONS.terms || privacy !== LEGAL_VERSIONS.privacy,
+      accepted: { terms, privacy },
+      current: LEGAL_VERSIONS,
+    };
   }
 
   function checkCsrf(request: FastifyRequest, session: SessionInfo, reply: FastifyReply): boolean {
@@ -314,7 +371,7 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
     return false;
   }
 
-  async function createSession(accountId: string, reply: FastifyReply) {
+  async function createSession(accountId: string, reply: FastifyReply, request?: FastifyRequest) {
     const user = await prisma.user.upsert({
       where: { accountId },
       update: { lastSeenAt: now() },
@@ -329,6 +386,8 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
         tokenHash: hashToken(token),
         csrfHash: hashToken(csrf),
         expiresAt,
+        userAgent: request?.headers["user-agent"]?.slice(0, 200) ?? null,
+        lastSeenAt: now(),
       },
     });
     reply.setCookie(SESSION_COOKIE, token, cookieOptions({ secure: secureCookies, maxAgeSeconds: sessionMaxAge }));
@@ -664,6 +723,8 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
         error: run.error,
         startedAt: run.startedAt?.toISOString() ?? null,
         finishedAt: run.finishedAt?.toISOString() ?? null,
+        model: run.model,
+        privateInference: privateInferenceSummary(run.outputJson),
       })),
       result: buildComparison(latest),
       pendingRecoveries,
@@ -846,7 +907,8 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       slot: worker.slot,
       accountId: worker.accountId,
       publicKey: chain.publicKeyFor(worker.accountId),
-      keyConfigured: Boolean(worker.privateKey),
+      keyConfigured: chain.hasSigner(worker.accountId),
+      custody: worker.custody,
     })),
     apiOrigin: config.apiOrigin,
     webOrigin: config.webOrigin,
@@ -859,12 +921,43 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       config.localSandboxMode && config.allowDevSession && config.nodeEnv !== "production",
     aiConfigured: Boolean(config.aiApiKey),
     aiModel: config.aiModel,
+    aiProvider: isNearAiBaseUrl(config.aiBaseUrl) ? "near-ai" : "openai-compatible",
+    aiPrivateInference: isNearAiBaseUrl(config.aiBaseUrl),
     policyProbeConfigured: Boolean(config.policyProbeProviderAccountId),
     chainConfig: await chainConfig().catch(() => null),
     testTokens: true,
     disclaimer:
       "Experimental testnet application. Balances are testnet tokens with no monetary value. Not audited.",
   }));
+
+  // ----------------------------------------------------------- private inference
+
+  let attestationCache: { value: AttestationSummary; at: number } | null = null;
+  /**
+   * Public summary of NEAR AI Cloud's TEE attestation for the configured model.
+   * Cached for 10 minutes. Per-response signature checks live on each agent run.
+   */
+  app.get("/ai/attestation", async (_request, reply) => {
+    if (!isNearAiBaseUrl(config.aiBaseUrl)) {
+      return reply.code(404).send({
+        error: "Private inference is not configured; AI_BASE_URL is not NEAR AI Cloud",
+        code: "PRIVATE_INFERENCE_DISABLED",
+      });
+    }
+    if (attestationCache && Date.now() - attestationCache.at < 10 * 60_000) {
+      return { attestation: attestationCache.value, cached: true, model: config.aiModel };
+    }
+    try {
+      const value = await fetchAttestation({ baseUrl: config.aiBaseUrl, apiKey: config.aiApiKey, model: config.aiModel });
+      attestationCache = { value, at: Date.now() };
+      return { attestation: value, cached: false, model: config.aiModel };
+    } catch (error) {
+      return reply.code(502).send({
+        error: error instanceof Error ? error.message : "Attestation unavailable",
+        code: "ATTESTATION_UNAVAILABLE",
+      });
+    }
+  });
 
   // ------------------------------------------------------------------------- auth
 
@@ -876,8 +969,8 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       if (!parsed.success) {
         return reply.code(400).send({ error: "A valid NEAR account id is required", code: "VALIDATION_ERROR" });
       }
-      if (!accountAllowed(parsed.data.account_id)) {
-        return reply.code(403).send({ error: "This account is not allowed to sign in", code: "ACCOUNT_NOT_ALLOWED" });
+      if (!(await accountAllowed(parsed.data.account_id))) {
+        return reply.code(403).send({ error: "Access is invite-only and this account is not on the list yet", code: "ACCOUNT_NOT_ALLOWED" });
       }
       const domain = new URL(config.webOrigin).host;
       const nonce = randomNonce();
@@ -927,8 +1020,8 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       if (!parsed.success) {
         return reply.code(400).send({ error: "Invalid verification payload", code: "VALIDATION_ERROR" });
       }
-      if (!accountAllowed(parsed.data.account_id)) {
-        return reply.code(403).send({ error: "This account is not allowed to sign in", code: "ACCOUNT_NOT_ALLOWED" });
+      if (!(await accountAllowed(parsed.data.account_id))) {
+        return reply.code(403).send({ error: "Access is invite-only and this account is not on the list yet", code: "ACCOUNT_NOT_ALLOWED" });
       }
       const challenge = await prisma.walletChallenge.findUnique({ where: { id: parsed.data.challenge_id } });
       if (
@@ -971,7 +1064,11 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
       if (consumed.count !== 1) {
         return reply.code(400).send({ error: "Challenge already used", code: "CHALLENGE_INVALID" });
       }
-      const { user, csrf, expiresAt } = await createSession(parsed.data.account_id, reply);
+      const existing = await prisma.user.findUnique({ where: { accountId: parsed.data.account_id } });
+      if (existing?.suspendedAt) {
+        return reply.code(403).send({ error: "This account is suspended. Contact the operator.", code: "ACCOUNT_SUSPENDED" });
+      }
+      const { user, csrf, expiresAt } = await createSession(parsed.data.account_id, reply, request);
       return {
         user: { accountId: user.accountId },
         csrf_token: csrf,
@@ -993,9 +1090,15 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
         aiConfigured: Boolean(config.aiApiKey),
       };
     }
+    const consent = await consentStatus(session.userId);
     return {
       authenticated: true,
       user: { accountId: session.accountId },
+      suspended: session.suspended,
+      consentRequired: consent.required,
+      consent,
+      isAdmin: isAdmin(session.accountId),
+      isOperator: isOperator(session.accountId),
       csrf_token: request.cookies[CSRF_COOKIE] ?? null,
       network: config.nearNetwork,
       sandbox: config.localSandboxMode,
@@ -1020,7 +1123,7 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
     if (!devSessionEnabled || !config.ownerAccountId) {
       return reply.code(404).send({ error: "Not found", code: "NOT_FOUND" });
     }
-    const { user, csrf, expiresAt } = await createSession(config.ownerAccountId, reply);
+    const { user, csrf, expiresAt } = await createSession(config.ownerAccountId, reply, request);
     return {
       user: { accountId: user.accountId },
       csrf_token: csrf,
@@ -2786,9 +2889,52 @@ export async function buildApiApp(deps: ApiDeps): Promise<FastifyInstance> {
     };
   });
 
+  // ------------------------------------------- compliance, status and admin
+  const health = new HealthService({ prisma, chain, config });
+  const routeContext: RouteContext = {
+    prisma,
+    chain,
+    config,
+    now,
+    health,
+    quota: chainActionQuota,
+    sessionFrom,
+    requireSession,
+    checkCsrf,
+    consentStatus,
+    isAdmin,
+    isOperator,
+    clearSessionCookies: (reply) => {
+      reply.clearCookie(SESSION_COOKIE, { path: "/" });
+      reply.clearCookie(CSRF_COOKIE, { path: "/" });
+    },
+    decryptDocument: (ciphertext) => decryptDocument(ciphertext, config.documentEncryptionKey),
+  };
+  registerPlatformRoutes(app, routeContext);
+  registerAccountRoutes(app, routeContext);
+  registerAdminRoutes(app, routeContext);
+
   return app;
 }
 
 function jobDedupeBucket(date: Date): string {
   return Math.floor(date.getTime() / 15_000).toString();
+}
+
+/** The run's NEAR AI verification result, trimmed for the UI. */
+function privateInferenceSummary(outputJson: unknown) {
+  const report = (outputJson as { privateInference?: Record<string, unknown> } | null)?.privateInference;
+  if (!report || report.provider !== "near-ai") return null;
+  const attestation = report.attestation as Record<string, unknown> | null;
+  return {
+    provider: "near-ai" as const,
+    model: typeof report.model === "string" ? report.model : null,
+    verifiedCount: typeof report.verifiedCount === "number" ? report.verifiedCount : 0,
+    totalCount: typeof report.totalCount === "number" ? report.totalCount : 0,
+    attested: Boolean(attestation),
+    hasTdxQuote: Boolean(attestation?.hasTdxQuote),
+    signingAddress: typeof attestation?.gatewaySigningAddress === "string" ? attestation.gatewaySigningAddress : null,
+    attestationError: typeof report.attestationError === "string" ? report.attestationError : null,
+    scope: typeof report.scope === "string" ? report.scope : null,
+  };
 }

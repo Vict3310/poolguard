@@ -57,6 +57,15 @@ export class AccountQuota {
     return { ok: true };
   }
 
+  /** Actions per account inside the current window (for the admin usage view). */
+  snapshot(): Array<{ accountId: string; used: number; limit: number }> {
+    const cutoff = this.clock() - this.windowMs;
+    return [...this.hits.entries()]
+      .map(([accountId, times]) => ({ accountId, used: times.filter((at) => at > cutoff).length, limit: this.limit }))
+      .filter((row) => row.used > 0)
+      .sort((a, b) => b.used - a.used);
+  }
+
   private prune(cutoff: number) {
     for (const [account, times] of this.hits) {
       if (!times.some((at) => at > cutoff)) this.hits.delete(account);

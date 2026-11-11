@@ -5,6 +5,7 @@ import type { NearChain } from "@poolguard/agent-runtime/chain";
 import { hashToken, CSRF_COOKIE, CSRF_HEADER } from "./security.js";
 import { buildApiApp } from "./app.js";
 import type { ApiConfig } from "./config.js";
+import { LEGAL_VERSIONS } from "@poolguard/shared";
 
 const OWNER = "owner.sandbox";
 const SESSION_TOKEN = "session-token-for-tests";
@@ -36,13 +37,19 @@ const baseConfig: ApiConfig = {
   workerConcurrency: 2,
   jobLeaseSeconds: 90,
   workerAccounts: [
-    { slot: 1, accountId: "agent-one.sandbox", privateKey: "unused", envVar: "WORKER_ONE_PRIVATE_KEY" },
-    { slot: 2, accountId: "agent-two.sandbox", privateKey: "unused", envVar: "WORKER_TWO_PRIVATE_KEY" },
+    { slot: 1, accountId: "agent-one.sandbox", privateKey: "unused", envVar: "WORKER_ONE_PRIVATE_KEY", custody: "local" },
+    { slot: 2, accountId: "agent-two.sandbox", privateKey: "unused", envVar: "WORKER_TWO_PRIVATE_KEY", custody: "local" },
   ],
   apiPort: 4100,
   apiHost: "127.0.0.1",
   sessionTtlDays: 7,
   apiChainActionsPerHour: 60,
+  outlayerApiUrl: "https://testnet-api.outlayer.ai",
+  adminAccounts: [],
+  operatorAccounts: [],
+  alertWebhookUrl: null,
+  contactEmail: null,
+  expectedWasmHash: null,
   authAllowedAccounts: [],
 };
 
@@ -58,7 +65,16 @@ function fakePrisma() {
         id: "user-1",
         accountId: where.accountId,
       }),
+      findUnique: async () => null,
     },
+    // The test account has accepted the current Terms and Privacy versions.
+    consentRecord: {
+      findMany: async () => [
+        { document: "terms", version: LEGAL_VERSIONS.terms, acceptedAt: new Date() },
+        { document: "privacy", version: LEGAL_VERSIONS.privacy, acceptedAt: new Date() },
+      ],
+    },
+    allowedAccount: { count: async () => 0, findUnique: async () => null },
     walletSession: {
       create: async ({ data }: { data: { userId: string; tokenHash: string; csrfHash: string; expiresAt: Date } }) => {
         const session = {
@@ -67,7 +83,8 @@ function fakePrisma() {
           revokedAt: null,
           expiresAt: data.expiresAt,
           csrfHash: data.csrfHash,
-          user: { accountId: OWNER },
+          lastSeenAt: new Date(),
+          user: { accountId: OWNER, suspendedAt: null },
         };
         sessions.set(data.tokenHash, session);
         return session;
@@ -125,6 +142,8 @@ const fakeChain = {
     withdrawal_storage_deposit: "20000000000000000000000",
   }),
   publicKeyFor: () => "ed25519:test",
+  hasSigner: () => true,
+  custodyOf: () => "local",
   getCurrentBlock: async () => 1,
   provider: { viewAccessKey: async () => ({ permission: "FullAccess" }) },
 } as unknown as NearChain;
@@ -264,6 +283,45 @@ describe("API authentication and isolation", () => {
     expect(session.statusCode).toBe(200);
     expect(session.json().user.accountId).toBe(OWNER);
     expect(session.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
+  it("asks for consent before any change when the current Terms were not accepted", async () => {
+    const { app, prisma } = await makeApp();
+    (prisma as unknown as { consentRecord: { findMany: () => Promise<unknown[]> } }).consentRecord.findMany = async () => [];
+    const auth = await authenticate(app);
+    const session = await app.inject({ method: "GET", url: "/auth/session", headers: { cookie: auth.cookie } });
+    expect(session.json().consentRequired).toBe(true);
+    const change = await app.inject({
+      method: "POST",
+      url: "/tasks",
+      headers: { cookie: auth.cookie, "x-poolguard-csrf": auth.csrf, origin: baseConfig.webOrigin },
+      payload: {},
+    });
+    expect(change.statusCode).toBe(428);
+    expect(change.json().code).toBe("CONSENT_REQUIRED");
+    await app.close();
+  });
+
+  it("hides the admin API from accounts that are not admins", async () => {
+    const { app } = await makeApp();
+    const auth = await authenticate(app);
+    const response = await app.inject({ method: "GET", url: "/admin/overview", headers: { cookie: auth.cookie } });
+    expect(response.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("keeps admin access read-only unless the account is an operator", async () => {
+    const { app } = await makeApp({ adminAccounts: [OWNER] });
+    const auth = await authenticate(app);
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/announcements",
+      headers: { cookie: auth.cookie, "x-poolguard-csrf": auth.csrf, origin: baseConfig.webOrigin },
+      payload: { message: "Maintenance tonight" },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("ADMIN_READ_ONLY");
     await app.close();
   });
 });

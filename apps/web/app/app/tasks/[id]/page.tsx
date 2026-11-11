@@ -218,6 +218,7 @@ export default function TaskDetailPage() {
             </Button>
             <Button
               size="sm"
+              variant="action"
               onClick={() => {
                 feedback("tap");
                 setRunOpen(true);

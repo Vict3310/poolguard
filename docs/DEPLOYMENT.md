@@ -141,6 +141,13 @@ Then fill in the values. The complete set of names read by the services is below
 | `SANDBOX_OWNER_PRIVATE_KEY` | unset | **Local sandbox only.** Lets the gated sandbox setup endpoint sign owner setup transactions. Never set outside a local sandbox. |
 | `NEXT_PUBLIC_POOLGUARD_CONTRACT_ID` | browser default | Optional contract ID for the wallet-selector modal. Do not put secrets in `NEXT_PUBLIC_*`. |
 | `PRISMA_LOG_QUERIES` | unset | Set `1` only for local query logging; may log sensitive parameters. |
+| `ADMIN_ACCOUNTS` | empty | Accounts that can open `/admin` read-only. Non-admins get a 404. |
+| `ADMIN_OPERATOR_ACCOUNTS` | empty | Subset of admins who can take actions. Every action is audited. |
+| `ALERT_WEBHOOK_URL` | unset | Optional webhook for monitor alerts (`{"text": ...}`). See [OPERATIONS.md](OPERATIONS.md). |
+| `MONITOR_DISABLED` | `false` | Turn off the in-process monitor on extra API replicas. |
+| `CONTACT_EMAIL` / `NEXT_PUBLIC_CONTACT_EMAIL` | unset | Optional public contact for the legal and contact pages. |
+| `NEXT_PUBLIC_REPO_URL` | this repository | Used for security reports and issue links. |
+| `POOLGUARD_EXPECTED_WASM_HASH` | unset | Base58 code hash of the deployed WASM, checked in `/admin`. CI prints it. |
 
 The sandbox writes additional local-only values (`SANDBOX_PROVIDER_PRIVATE_KEY`, `POLICY_PROBE_PROVIDER_ACCOUNT_ID`, restricted worker keys) into `.env.local`. The provider's private key is not required by the running provider service: payouts are sent by the contract to the provider account.
 

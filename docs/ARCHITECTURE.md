@@ -227,6 +227,25 @@ UI labels sandbox hashes as local evidence rather than linking them to testnet.
 A scripted run is labelled in the API/UI and is not presented as model output.
 Contract, provider and accounting paths remain real in scripted mode.
 
+## Defense in depth: NEAR AI Cloud and OutLayer
+
+Two optional ecosystem integrations sit in front of the contract. Each catches a
+different failure; the contract stays the final authority.
+
+| Layer | What it does | What PoolGuard verifies | Mode |
+| --- | --- | --- | --- |
+| NEAR AI Cloud | Agents reason inside TEEs, so supplier documents are processed in an enclave, not by a regular AI provider. | Per completion, SHA-256 of the exact request and response bytes; NEAR AI's response signature must bind those hashes and verify (ed25519) against the signing key in the attestation report. The Intel TDX quote is verified by NEAR AI's verifier, not by PoolGuard. | Optional: on when `AI_BASE_URL` is `https://cloud-api.near.ai/v1`. |
+| OutLayer | The worker's NEAR key lives in OutLayer's enclave; the worker signs through an API key. OutLayer applies the wallet's policy (spend caps, transaction types, freeze) before signing. | The custody wallet is a 64-hex implicit account whose key is registered on the contract like any agent key. Provider requests are NEP-413 signed and verified against that registered key. | Optional, per worker: `WORKER_*_CUSTODY=outlayer`; otherwise a restricted function-call key in server env. |
+| PoolGuard contract | Shared budget, per-purchase cap, provider allowlist, reserve-then-pay-once. | Always enforced on chain. | Always on. |
+
+Custody transactions are signed remotely, so their hash is known only after
+broadcast. The chain client stores a placeholder, swaps in the real hash through
+`onTxHashResolved`, and reads the outcome from chain, so denials and receipts are
+handled exactly like locally signed transactions. An unknown outcome is reconciled
+by operation id; nothing is re-derived. Evidence for private inference is stored in
+`AgentRun.outputJson.privateInference` and surfaced on each run; `GET
+/ai/attestation` exposes the cached attestation summary.
+
 ## Deliberate boundaries
 
 - One flat budget per task; no custom tokens, stablecoins or NEAR Intents.

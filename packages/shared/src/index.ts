@@ -6,3 +6,4 @@ export * from "./operation.js";
 export * from "./schemas.js";
 export * from "./sha256.js";
 export * from "./states.js";
+export * from "./legal.js";

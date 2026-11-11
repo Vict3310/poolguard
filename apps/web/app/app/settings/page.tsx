@@ -11,6 +11,8 @@ import { useAuth } from "@/components/auth-provider";
 import { usePreferences, type MotionPreference } from "@/components/preferences-provider";
 import { SHORTCUTS, useCommandPalette } from "@/components/command-palette";
 import { Button } from "@/components/ui/button";
+import { CustodyBadge } from "@/components/trust-badges";
+import { DataPrivacySettings } from "@/components/settings/data-privacy";
 import { Segmented, Switch } from "@/components/ui/switch";
 import { feedback, vibrationSupported } from "@/lib/feedback";
 import { clearOnboardingStatus } from "@/lib/onboarding";
@@ -119,6 +121,8 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        <DataPrivacySettings />
+
         <Section title="Guided setup" description="Walk through the introduction and create a task with sample documents again.">
           <div className="px-5 py-4">
             <Button
@@ -148,7 +152,21 @@ export default function SettingsPage() {
           </Row>
           <Row label="AI mode">
             <span className="text-[13px] text-[var(--foreground-secondary)]">
-              {meta?.aiConfigured ? `Live model · ${meta.aiModel}` : "Scripted fixtures (no AI key configured)"}
+              {meta?.aiConfigured
+                ? meta.aiPrivateInference
+                  ? `Private inference · NEAR AI Cloud TEE · ${meta.aiModel}`
+                  : `Live model · ${meta.aiModel}`
+                : "Scripted fixtures (no AI key configured)"}
+            </span>
+          </Row>
+          <Row label="Agent key custody">
+            <span className="flex flex-col gap-1 text-[12px]">
+              {(meta?.workerAccounts ?? []).map((worker) => (
+                <span key={worker.accountId} className="flex items-center gap-2">
+                  <span className="text-[var(--foreground-muted)]">Agent {worker.slot}</span>
+                  <CustodyBadge custody={worker.custody} />
+                </span>
+              ))}
             </span>
           </Row>
         </Section>

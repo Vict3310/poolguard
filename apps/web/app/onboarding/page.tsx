@@ -233,7 +233,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
           ))}
         </motion.ul>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-8 flex flex-wrap items-center gap-3">
-          <Button size="lg" onClick={onNext}>
+          <Button size="lg" variant="action" onClick={onNext}>
             Show me how <ArrowRight />
           </Button>
           <span className="text-[12px] text-[var(--foreground-muted)]">About two minutes · you can skip any time</span>
@@ -266,7 +266,7 @@ function MeetAgents({ onBack, onNext }: { onBack: () => void; onNext: () => void
           <motion.div key={worker.accountId} variants={rise} className="lift rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
             <div className="flex items-center gap-3">
               <motion.span
-                className="flex size-11 items-center justify-center rounded-full bg-[var(--primary)] text-white"
+                className="flex size-11 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)]"
                 initial={{ scale: 0.6, rotate: -8 }}
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{ ...spring.snappy, delay: 0.3 + worker.slot * 0.1 }}
@@ -280,7 +280,10 @@ function MeetAgents({ onBack, onNext }: { onBack: () => void; onNext: () => void
             </div>
             <ul className="mt-4 space-y-2 text-[13px] text-[var(--foreground-secondary)]">
               <li className="flex items-center gap-2">
-                <KeyRound className="size-3.5 text-[var(--accent)]" /> Key limited to reserve, execute and cancel
+                <KeyRound className="size-3.5 text-[var(--accent)]" />
+                {"custody" in worker && worker.custody === "outlayer"
+                  ? "Key sealed in OutLayer's secure enclave, with its own spend policy"
+                  : "Key limited to reserve, execute and cancel"}
               </li>
               <li className="flex items-center gap-2">
                 <ShieldCheck className="size-3.5 text-[var(--accent)]" /> Can’t change limits, add vendors or withdraw
@@ -302,11 +305,18 @@ function MeetAgents({ onBack, onNext }: { onBack: () => void; onNext: () => void
           extraction service.
         </p>
       </motion.div>
+      {workers.some((worker) => worker.custody === "outlayer") ? (
+        <p className="mt-4 rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-4 text-[13px] leading-5 text-[var(--foreground-secondary)]">
+          <strong className="text-[var(--foreground)]">Keys held by a third party.</strong> In this deployment the agents’ keys live
+          in OutLayer’s secure enclave, not on PoolGuard’s servers. OutLayer checks its own spending policy before signing. If
+          OutLayer is unavailable, agents pause until it returns; nothing is paid twice.
+        </p>
+      ) : null}
       <div className="mt-8 flex flex-wrap items-center gap-3">
         <Button variant="ghost" onClick={onBack}>
           <ArrowLeft /> Back
         </Button>
-        <Button size="lg" onClick={onNext}>
+        <Button size="lg" variant="action" onClick={onNext}>
           Set up a task <ArrowRight />
         </Button>
       </div>
@@ -375,7 +385,7 @@ function FirstRun({ taskId, onDone }: { taskId: string; onDone: (destination: st
           ))}
         </motion.div>
         <motion.div variants={rise} className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-          <Button size="lg" onClick={() => run.mutate()} loading={run.isPending}>
+          <Button size="lg" variant="action" onClick={() => run.mutate()} loading={run.isPending}>
             <Play /> {meta?.aiConfigured ? "Run the agents" : "Run the agents (scripted)"}
           </Button>
           <Button size="lg" variant="secondary" onClick={() => onDone("/app/demo")}>
