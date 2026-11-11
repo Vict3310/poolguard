@@ -6,6 +6,8 @@ import {
 import {
   computeRequestHash,
   providerAuthChallengeHash,
+  nep413Hash,
+  bytesToHex,
   type ChainOperationView,
   type ProviderAuth,
   PROVIDER_AUTH_HEADERS,
@@ -375,6 +377,46 @@ describe("provider API", () => {
     });
     expect(response.statusCode).toBe(401);
     expect(response.json().code).toBe("AUTH_STALE");
+    await app.close();
+  });
+
+  it("accepts a NEP-413 signed authorization from a custody wallet and rejects a mismatch", async () => {
+    const { app, key } = await setup();
+    const requestHash = computeRequestHash("doc-extract-v1", { document_text: DOC });
+    const issuedAt = new Date().toISOString();
+    const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
+    const nonce = base64Encode(nonceBytes);
+    const digest = providerAuthChallengeHash({
+      domain: DOMAIN,
+      network: NETWORK,
+      contractId: CONTRACT,
+      action: "purchase",
+      operationId: OP,
+      requestHash,
+      issuedAt,
+      nonce,
+    });
+    // What OutLayer's /wallet/v1/sign-message signs: the NEP-413 payload hash.
+    const signed = key.sign(nep413Hash({ message: bytesToHex(digest), nonce: nonceBytes, recipient: DOMAIN }));
+    const auth = {
+      agent_account_id: "agent-one.sandbox",
+      public_key: key.getPublicKey().toString(),
+      signature_base64: base64Encode(signed.signature),
+      issued_at: issuedAt,
+      nonce,
+      scheme: "nep413" as const,
+    };
+    const ok = await app.inject({ method: "POST", url: "/purchases", payload: { ...purchaseBody(key), auth } });
+    expect(ok.statusCode).toBe(200);
+
+    // The same NEP-413 signature presented as a raw digest signature must fail.
+    const { scheme: _scheme, ...raw } = auth;
+    const wrongScheme = await app.inject({
+      method: "POST",
+      url: "/purchases",
+      payload: { ...purchaseBody(key), auth: { ...raw, nonce: base64Encode(crypto.getRandomValues(new Uint8Array(32))) } },
+    });
+    expect(wrongScheme.statusCode).toBe(401);
     await app.close();
   });
 });

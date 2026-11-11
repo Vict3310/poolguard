@@ -17,6 +17,16 @@ export interface ApiConfig extends ServerConfig {
   apiChainActionsPerHour: number;
   /** Lower-cased NEAR accounts allowed to sign in. Empty allows every account. */
   authAllowedAccounts: string[];
+  /** Accounts that can open /admin (read-only). */
+  adminAccounts: string[];
+  /** Admin accounts that may also take actions (retry jobs, suspend users, …). */
+  operatorAccounts: string[];
+  /** Optional Slack-compatible webhook for operational alerts. */
+  alertWebhookUrl: string | null;
+  /** Public contact address for privacy and support requests (optional). */
+  contactEmail: string | null;
+  /** Expected deployed contract code hash (base58), for the admin contract check. */
+  expectedWasmHash: string | null;
 }
 
 /**
@@ -58,6 +68,11 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       chainReadConcurrency: z.coerce.number().int().min(1).max(16).default(4),
       apiChainActionsPerHour: z.coerce.number().int().min(1).default(60),
       authAllowedAccounts: z.string().optional(),
+      adminAccounts: z.string().optional(),
+      operatorAccounts: z.string().optional(),
+      alertWebhookUrl: z.string().url().optional(),
+      contactEmail: z.string().email().optional(),
+      expectedWasmHash: z.string().min(20).optional(),
     })
     .safeParse({
       sessionSecret: env.SESSION_SECRET,
@@ -70,6 +85,11 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       chainReadConcurrency: env.CHAIN_READ_CONCURRENCY,
       apiChainActionsPerHour: env.API_CHAIN_ACTIONS_PER_HOUR,
       authAllowedAccounts: env.AUTH_ALLOWED_ACCOUNTS,
+      adminAccounts: env.ADMIN_ACCOUNTS,
+      operatorAccounts: env.ADMIN_OPERATOR_ACCOUNTS,
+      alertWebhookUrl: env.ALERT_WEBHOOK_URL || undefined,
+      contactEmail: env.CONTACT_EMAIL || undefined,
+      expectedWasmHash: env.POOLGUARD_EXPECTED_WASM_HASH || undefined,
     });
   if (!extra.success) {
     throw new ConfigurationError(
@@ -95,5 +115,13 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ...extra.data,
     apiTrustProxy: parseTrustProxy(extra.data.apiTrustProxy),
     authAllowedAccounts: parseAccountAllowlist(extra.data.authAllowedAccounts),
+    adminAccounts: parseAccountAllowlist(extra.data.adminAccounts),
+    // Operators must also be admins.
+    operatorAccounts: parseAccountAllowlist(extra.data.operatorAccounts).filter((account) =>
+      parseAccountAllowlist(extra.data.adminAccounts).includes(account),
+    ),
+    alertWebhookUrl: extra.data.alertWebhookUrl ?? null,
+    contactEmail: extra.data.contactEmail ?? null,
+    expectedWasmHash: extra.data.expectedWasmHash ?? null,
   };
 }

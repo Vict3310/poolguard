@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createFundedTask, runScenario, signInWithSandbox } from "./helpers.js";
+import { agreeToTerms, createFundedTask, runScenario, signInWithSandbox } from "./helpers.js";
 
 test("public landing and authenticated gate are honest", async ({ page }) => {
   await page.goto("/");
@@ -16,6 +16,7 @@ test("public landing and authenticated gate are honest", async ({ page }) => {
 
 test("a new account is offered guided setup and unknown pages show a calm 404", async ({ page }) => {
   await page.goto("/login");
+  await agreeToTerms(page);
   await page.getByRole("button", { name: /Use sandbox session/ }).click();
   await expect(page).toHaveURL(/\/(onboarding|app)/, { timeout: 30_000 });
   await page.goto("/onboarding");

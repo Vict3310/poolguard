@@ -14,31 +14,31 @@ export function BudgetPanel({ task }: { task: Task }) {
       key: "available",
       label: "Available",
       value: budget.availableYocto,
-      className: "bg-[#4d6042]",
+      className: "bg-[#a5a6f6]",
     },
     {
       key: "reserved",
       label: "Reserved",
       value: budget.reservedYocto,
-      className: "bg-[#c08a3e]",
+      className: "bg-[#f2b34a]",
     },
     {
       key: "spent",
       label: "Spent",
       value: budget.spentYocto,
-      className: "bg-[#20211f]",
+      className: "bg-[#f87171]",
     },
     {
       key: "withdrawn",
       label: "Withdrawn",
       value: budget.withdrawnYocto,
-      className: "bg-[#b9bbb2]",
+      className: "bg-[#4b4b57]",
     },
     {
       key: "withdrawal_pending",
       label: "Withdrawal pending",
       value: budget.withdrawalPendingYocto,
-      className: "bg-[#8fa3b8]",
+      className: "bg-[#8ab8ff]",
     },
   ].filter((segment) => segment.value !== "0");
   const total = budget.totalFundedYocto;
@@ -91,7 +91,7 @@ export function BudgetPanel({ task }: { task: Task }) {
           <div>
             <dt className="text-[var(--foreground-muted)]">Policy</dt>
             <dd className="mt-1">
-              <a href="#policy" className="inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline">
+              <a href="#policy" className="inline-flex items-center gap-1 font-medium text-[var(--action)] hover:text-[var(--action-hover)] hover:underline">
                 Version {task.policy.version} <ExternalLink className="size-3" />
               </a>
             </dd>

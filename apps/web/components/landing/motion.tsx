@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { motion, useMotionValue, useReducedMotion, useScroll, useSpring, useMotionValueEvent } from "motion/react";
+import { motion, useMotionValue, useScroll, useSpring, useMotionValueEvent } from "motion/react";
+import { useMotionReduced } from "@/components/preferences-provider";
 import { Check, Copy } from "lucide-react";
 import { copyText } from "@/lib/api";
 import { ease, spring } from "@/lib/motion";
@@ -22,6 +23,16 @@ export function Reveal({
   as?: "div" | "li" | "section";
 }) {
   const Component = motion[as];
+  const reduce = useMotionReduced();
+  // With motion reduced, show immediately (the preference can arrive after the
+  // first render, so animate to visible rather than dropping the props).
+  if (reduce) {
+    return (
+      <Component className={className} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0 }}>
+        {children}
+      </Component>
+    );
+  }
   return (
     <Component
       className={className}
@@ -37,11 +48,12 @@ export function Reveal({
 
 /** Staggers direct children (each wrapped in <RevealItem>) as the group enters. */
 export function RevealGroup({ children, className, step = 0.08 }: { children: React.ReactNode; className?: string; step?: number }) {
+  const reduce = useMotionReduced();
   return (
     <motion.div
       className={className}
-      initial="hidden"
-      whileInView="show"
+      initial={reduce ? "show" : "hidden"}
+      {...(reduce ? { animate: "show" } : { whileInView: "show" })}
       viewport={{ once: true, margin: "-80px" }}
       variants={{ hidden: {}, show: { transition: { staggerChildren: step } } }}
     >
@@ -63,7 +75,7 @@ export function RevealItem({ children, className }: { children: React.ReactNode;
 
 /** A subtle pull toward the cursor on fine pointers. Off for touch and reduced motion. */
 export function Magnetic({ children, strength = 0.22, className }: { children: React.ReactNode; strength?: number; className?: string }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const springX = useSpring(x, spring.snappy);
@@ -95,18 +107,21 @@ export function Magnetic({ children, strength = 0.22, className }: { children: R
 
 /** Word-by-word headline entrance. */
 export function StaggerWords({ lines, className }: { lines: string[]; className?: string }) {
+  const reduce = useMotionReduced();
   let index = 0;
   return (
     <h1 className={className} aria-label={lines.join(" ")}>
       {lines.map((line, lineIndex) => (
         <span key={line} className="block" aria-hidden>
-          {line.split(" ").map((word) => {
+          {line.split(" ").map((word, wordIndex, words) => {
             const delay = 0.08 + index++ * 0.06;
+            // The last word of each line fades into the background, as in the app's headlines.
+            const fade = wordIndex === words.length - 1;
             return (
               <span key={`${lineIndex}-${word}-${delay}`} className="inline-block overflow-hidden pb-[0.08em] align-bottom">
                 <motion.span
-                  className="inline-block"
-                  initial={{ y: "105%" }}
+                  className={fade ? "text-fade inline-block" : "inline-block"}
+                  initial={reduce ? false : { y: "105%" }}
                   animate={{ y: "0%" }}
                   transition={{ duration: 0.7, ease, delay }}
                 >
@@ -132,7 +147,7 @@ export function ScrollHeader({ children, className }: { children: React.ReactNod
       className={cn(
         className,
         "transition-[box-shadow,background-color] duration-300",
-        scrolled && "shadow-[0_6px_24px_rgb(24_28_20_/_6%)]",
+        scrolled && "shadow-[0_6px_24px_rgb(0_0_0_/_45%)]",
       )}
     >
       {children}
@@ -153,7 +168,7 @@ export function CopyCode({ value }: { value: string }) {
       onClick={() => {
         void copyText(value).then(() => setCopied(true));
       }}
-      className="inline-flex h-6 items-center gap-1.5 rounded-[5px] px-2 text-[10px] text-[#a7aca0] transition-colors hover:bg-[#2c2f29] hover:text-white"
+      className="inline-flex h-6 items-center gap-1.5 rounded-[5px] px-2 text-[10px] text-[#a0a0ab] transition-colors hover:bg-[#1d1d24] hover:text-white"
       aria-label={copied ? "Copied" : "Copy example"}
     >
       <motion.span key={copied ? "y" : "n"} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}>

@@ -36,3 +36,6 @@ uploads/
 .DS_Store
 .idea/
 .vscode/
+
+# Database dumps (scripts/db-backup.sh)
+backups/

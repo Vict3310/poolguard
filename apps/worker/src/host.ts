@@ -186,6 +186,7 @@ export class PersistentAgentHost implements AgentHost {
       serviceDomain: this.deps.config.providerServiceDomain,
       agentAccountId: worker.accountId,
       agentPrivateKey: worker.privateKey,
+      custody: this.chain.custodyClient(worker.accountId) ?? undefined,
     });
   }
 
@@ -1147,6 +1148,7 @@ export async function reconcileOperationById(deps: {
     serviceDomain: deps.config.providerServiceDomain,
     agentAccountId: worker.accountId,
     agentPrivateKey: worker.privateKey,
+    custody: deps.chain.custodyClient(worker.accountId) ?? undefined,
   });
   try {
     const delivered = await client.purchase({

@@ -72,7 +72,7 @@ export function CopyablePre({ className, children }: { className?: string; child
     const timer = window.setTimeout(() => setCopied(false), 1600);
     return () => window.clearTimeout(timer);
   }, [copied]);
-  const dark = className?.includes("#20211f");
+  const dark = className?.includes("#0a0a0d");
   return (
     <div className="group relative">
       <pre ref={ref} className={className}>
@@ -84,7 +84,7 @@ export function CopyablePre({ className, children }: { className?: string; child
         aria-label={copied ? "Copied" : "Copy code"}
         className={cn(
           "absolute right-2 top-2 inline-flex size-7 items-center justify-center rounded-[6px] opacity-0 transition-[opacity,background-color] duration-150 group-hover:opacity-100 focus-visible:opacity-100",
-          dark ? "text-[#a7aca0] hover:bg-[#2c2f29] hover:text-white" : "text-[var(--foreground-muted)] hover:bg-[var(--surface-hover)]",
+          dark ? "text-[#a0a0ab] hover:bg-[#1d1d24] hover:text-white" : "text-[var(--foreground-muted)] hover:bg-[var(--surface-hover)]",
           copied && "opacity-100",
         )}
       >

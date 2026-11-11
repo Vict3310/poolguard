@@ -12,6 +12,7 @@ export interface Meta {
     accountId: string;
     publicKey: string | null;
     keyConfigured: boolean;
+    custody?: "local" | "outlayer";
   }>;
   apiOrigin: string;
   webOrigin: string;
@@ -19,6 +20,8 @@ export interface Meta {
   devSessionEnabled: boolean;
   aiConfigured: boolean;
   aiModel: string;
+  aiProvider?: "near-ai" | "openai-compatible";
+  aiPrivateInference?: boolean;
   policyProbeConfigured: boolean;
   chainConfig: {
     task_storage_deposit: string;
@@ -36,6 +39,15 @@ export interface Meta {
 export interface Session {
   authenticated: boolean;
   user?: { accountId: string };
+  suspended?: boolean;
+  consentRequired?: boolean;
+  consent?: {
+    required: boolean;
+    accepted: { terms: string | null; privacy: string | null };
+    current: { terms: string; privacy: string };
+  };
+  isAdmin?: boolean;
+  isOperator?: boolean;
   csrf_token?: string | null;
   network?: "sandbox" | "testnet";
   sandbox?: boolean;
@@ -151,6 +163,18 @@ export interface Run {
   error: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  model?: string | null;
+  privateInference?: {
+    provider: "near-ai";
+    model: string | null;
+    verifiedCount: number;
+    totalCount: number;
+    attested: boolean;
+    hasTdxQuote: boolean;
+    signingAddress: string | null;
+    attestationError: string | null;
+    scope: string | null;
+  } | null;
 }
 
 export interface ComparisonEntry {

@@ -24,10 +24,10 @@ export function ConnectWallet({ compact = false }: { compact?: boolean }) {
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] pl-1.5 pr-2.5 text-[13px] font-medium hover:bg-[var(--surface-hover)]"
+            className="inline-flex h-11 items-center gap-2 rounded-[14px] border border-[var(--border)] bg-[#0c0c10] pl-2 pr-2.5 text-[13px] font-medium hover:bg-[var(--surface-hover)]"
             aria-label={`Account menu for ${accountId}`}
           >
-            <span className="flex size-6 items-center justify-center rounded-full bg-[var(--primary)] text-[10px] font-semibold text-white">
+            <span className="flex size-6 items-center justify-center rounded-full bg-[var(--action-soft)] text-[10px] font-semibold text-[var(--action)]">
               {accountId.slice(0, 2).toUpperCase()}
             </span>
             <span className={compact ? "sr-only" : "hidden sm:inline"}>{shortId(accountId, 10, 6)}</span>

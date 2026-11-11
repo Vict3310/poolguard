@@ -95,25 +95,88 @@ enum AgentRunMode {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  accountId   String   @unique
-  displayName String?
-  createdAt   DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
+  id              String    @id @default(cuid())
+  accountId       String    @unique
+  displayName     String?
+  createdAt       DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  /// Set by an operator; a suspended account cannot sign in or act.
+  suspendedAt     DateTime?
+  suspendedReason String?
 
   sessions WalletSession[]
   tasks    Task[]
+  consents ConsentRecord[]
+}
+
+/// Which Terms / Privacy version an account accepted, and when.
+model ConsentRecord {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document   String
+  version    String
+  acceptedAt DateTime @default(now())
+
+  @@index([userId, document])
+}
+
+/// Operator-managed sign-in allowlist, merged with AUTH_ALLOWED_ACCOUNTS.
+model AllowedAccount {
+  accountId String   @id
+  addedBy   String
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+/// Maintenance or incident notice shown to every user.
+model Announcement {
+  id        String    @id @default(cuid())
+  message   String
+  severity  String    @default("info")
+  active    Boolean   @default(true)
+  createdBy String
+  createdAt DateTime  @default(now())
+  endsAt    DateTime?
+
+  @@index([active, createdAt])
+}
+
+/// Operator moderation flags on tasks or documents.
+model ContentFlag {
+  id         String    @id @default(cuid())
+  taskId     String?
+  documentId String?
+  reason     String
+  status     String    @default("open")
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolution String?
+
+  @@index([status, createdAt])
+}
+
+/// Liveness signal written by each worker process.
+model WorkerHeartbeat {
+  workerId   String   @id
+  startedAt  DateTime
+  lastSeenAt DateTime
+  activeJobs Int      @default(0)
 }
 
 model WalletSession {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String    @unique
-  csrfHash  String
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
-  revokedAt DateTime?
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  csrfHash   String
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+  /// Shown on the account's "active sessions" list. Not used for authorization.
+  userAgent  String?
+  lastSeenAt DateTime?
 
   @@index([userId])
   @@index([expiresAt])
@@ -134,38 +197,41 @@ model WalletChallenge {
 }
 
 model Task {
-  id            String     @id @default(cuid())
-  chainTaskId   String     @unique
-  contractId    String
-  network       String
+  id             String     @id @default(cuid())
+  chainTaskId    String     @unique
+  contractId     String
+  network        String
   ownerAccountId String
-  ownerUserId   String?
-  owner         User?      @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
-  name          String
-  objective     String
-  status        TaskStatus @default(DRAFT)
-  paused        Boolean    @default(false)
+  ownerUserId    String?
+  owner          User?      @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  name           String
+  objective      String
+  status         TaskStatus @default(DRAFT)
+  paused         Boolean    @default(false)
 
-  policyVersion           Int    @default(1)
-  maxPerOperationYocto    String
-  allowedProviders        String[]
-  reservationTtlBlocks    Int
-  expiresAtBlock          BigInt
+  policyVersion            Int      @default(1)
+  maxPerOperationYocto     String
+  allowedProviders         String[]
+  reservationTtlBlocks     Int
+  expiresAtBlock           BigInt
   setupStorageDepositYocto String
-  budgetGoalYocto         String
+  budgetGoalYocto          String
 
-  totalFundedYocto      String   @default("0")
-  availableYocto        String   @default("0")
-  reservedYocto         String   @default("0")
-  spentYocto            String   @default("0")
-  withdrawnYocto        String   @default("0")
-  withdrawalPendingYocto String  @default("0")
-  createdAtBlock        BigInt?
-  syncedAt              DateTime?
-  lastSyncError         String?
+  totalFundedYocto       String    @default("0")
+  availableYocto         String    @default("0")
+  reservedYocto          String    @default("0")
+  spentYocto             String    @default("0")
+  withdrawnYocto         String    @default("0")
+  withdrawalPendingYocto String    @default("0")
+  createdAtBlock         BigInt?
+  syncedAt               DateTime?
+  lastSyncError          String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  /// Hidden by an operator (moderation). Chain state is unaffected.
+  hiddenAt     DateTime?
+  hiddenReason String?
 
   policySnapshots PolicySnapshot[]
   agents          Agent[]
@@ -183,36 +249,36 @@ model Task {
 }
 
 model PolicySnapshot {
-  id                    String   @id @default(cuid())
-  taskId                String
-  task                  Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  version               Int
-  maxPerOperationYocto  String
-  allowedProviders      String[]
-  reservationTtlBlocks  Int
-  expiresAtBlock        BigInt
-  policyHash            String
-  createdBy             String
-  createdTxHash         String?
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(cuid())
+  taskId               String
+  task                 Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  version              Int
+  maxPerOperationYocto String
+  allowedProviders     String[]
+  reservationTtlBlocks Int
+  expiresAtBlock       BigInt
+  policyHash           String
+  createdBy            String
+  createdTxHash        String?
+  createdAt            DateTime @default(now())
 
   @@unique([taskId, version])
 }
 
 model Agent {
-  id               String      @id @default(cuid())
-  taskId           String
-  task             Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  label            String
-  slot             Int
-  accountId        String
-  publicKey        String
-  keyEnvVar        String
-  status           AgentStatus @default(REGISTERED)
-  registeredTxHash String?
+  id                String      @id @default(cuid())
+  taskId            String
+  task              Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label             String
+  slot              Int
+  accountId         String
+  publicKey         String
+  keyEnvVar         String
+  status            AgentStatus @default(REGISTERED)
+  registeredTxHash  String?
   registeredAtBlock BigInt?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   operations Operation[]
   runs       AgentRun[]
@@ -238,19 +304,19 @@ model Provider {
 }
 
 model Service {
-  id                String   @id @default(cuid())
-  providerId        String
-  provider          Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  serviceKey        String
-  serviceId         String
-  name              String
-  description       String
-  priceYocto        String
-  outputSchemaHash  String
-  version           String
-  engine            String
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
+  id               String   @id @default(cuid())
+  providerId       String
+  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  serviceKey       String
+  serviceId        String
+  name             String
+  description      String
+  priceYocto       String
+  outputSchemaHash String
+  version          String
+  engine           String
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
 
   quotes Quote[]
 
@@ -259,35 +325,37 @@ model Service {
 }
 
 model Quote {
-  id                String   @id @default(cuid())
-  taskId            String
-  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  agentId           String?
-  agent             Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  serviceId         String
-  service           Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  documentId        String?
-  providerQuoteId   String
-  requestHash       String
-  outputSchemaHash  String
-  priceYocto        String
-  expiresAt         DateTime
-  createdAt         DateTime @default(now())
+  id               String   @id @default(cuid())
+  taskId           String
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentId          String?
+  agent            Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  serviceId        String
+  service          Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  documentId       String?
+  providerQuoteId  String
+  requestHash      String
+  outputSchemaHash String
+  priceYocto       String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
 
   @@index([taskId, createdAt])
   @@index([requestHash])
 }
 
 model Document {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   taskId            String
-  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task              Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   label             String
   filename          String
   contentCiphertext String
   contentHash       String
   byteSize          Int
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
+  /// Removed by an operator; ciphertext is wiped and the row kept for evidence links.
+  removedAt         DateTime?
 
   operations Operation[]
 
@@ -295,33 +363,33 @@ model Document {
 }
 
 model Operation {
-  id                   String   @id @default(cuid())
-  taskId               String
-  task                 Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  chainTaskId          String
-  operationId          String
-  agentId              String
-  agent                Agent    @relation(fields: [agentId], references: [id], onDelete: Restrict)
-  providerAccountId    String
-  serviceId            String
-  amountYocto          String
-  requestHash          String
-  outputSchemaHash     String
-  policyVersion        Int
-  documentId           String?
-  document             Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  id                String    @id @default(cuid())
+  taskId            String
+  task              Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  chainTaskId       String
+  operationId       String
+  agentId           String
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  providerAccountId String
+  serviceId         String
+  amountYocto       String
+  requestHash       String
+  outputSchemaHash  String
+  policyVersion     Int
+  documentId        String?
+  document          Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
-  paymentState         PaymentState     @default(RESERVED)
-  fulfillmentState     FulfillmentState @default(NOT_REQUESTED)
+  paymentState              PaymentState     @default(RESERVED)
+  fulfillmentState          FulfillmentState @default(NOT_REQUESTED)
   reservationExpiresAtBlock BigInt
-  expiresAtBlock       BigInt
-  chainCreatedAtBlock  BigInt?
-  settledAtBlock       BigInt?
-  payoutAttempts       Int      @default(0)
-  recoveryAttempts     Int      @default(0)
-  needsRecovery        Boolean  @default(false)
-  lastError            String?
-  denialCode           String?
+  expiresAtBlock            BigInt
+  chainCreatedAtBlock       BigInt?
+  settledAtBlock            BigInt?
+  payoutAttempts            Int              @default(0)
+  recoveryAttempts          Int              @default(0)
+  needsRecovery             Boolean          @default(false)
+  lastError                 String?
+  denialCode                String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -336,23 +404,23 @@ model Operation {
 }
 
 model ChainTransaction {
-  id               String        @id @default(cuid())
-  taskId           String?
-  task             Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  operationDbId    String?
-  operation        Operation?    @relation(fields: [operationDbId], references: [id], onDelete: SetNull)
-  kind             ChainTxKind
-  status           ChainTxStatus @default(PREPARED)
-  txHash           String?       @unique
-  signerAccountId  String
-  receiverId       String
-  network          String
-  blockHeight      BigInt?
-  outcome          Json?
-  errorMessage     String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  confirmedAt      DateTime?
+  id              String        @id @default(cuid())
+  taskId          String?
+  task            Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  operationDbId   String?
+  operation       Operation?    @relation(fields: [operationDbId], references: [id], onDelete: SetNull)
+  kind            ChainTxKind
+  status          ChainTxStatus @default(PREPARED)
+  txHash          String?       @unique
+  signerAccountId String
+  receiverId      String
+  network         String
+  blockHeight     BigInt?
+  outcome         Json?
+  errorMessage    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  confirmedAt     DateTime?
 
   @@index([operationDbId, createdAt])
   @@index([signerAccountId])
@@ -360,21 +428,21 @@ model ChainTransaction {
 }
 
 model ProviderResult {
-  id                String               @id @default(cuid())
-  chainTaskId       String
-  operationId       String
-  requestHash       String
-  outputSchemaHash  String
-  serviceKey        String
-  status            ProviderResultStatus @default(PROCESSING)
-  resultJson        Json?
-  attempts          Int                  @default(0)
-  lastError         String?
-  deliveredAt       DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id               String               @id @default(cuid())
+  chainTaskId      String
+  operationId      String
+  requestHash      String
+  outputSchemaHash String
+  serviceKey       String
+  status           ProviderResultStatus @default(PROCESSING)
+  resultJson       Json?
+  attempts         Int                  @default(0)
+  lastError        String?
+  deliveredAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
-  task   Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
   taskId String?
 
   @@unique([chainTaskId, operationId])
@@ -424,26 +492,26 @@ model AuditEvent {
 }
 
 model AgentRun {
-  id            String         @id @default(cuid())
-  taskId        String
-  task          Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  agentId       String
-  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  runId         String
-  mode          AgentRunMode
-  status        AgentRunStatus @default(QUEUED)
-  documentId    String?
-  steps         Int            @default(0)
-  tokensUsed    Int            @default(0)
-  model         String?
-  summary       String?
-  outputJson    Json?
-  denialCode    String?
-  error         String?
-  startedAt     DateTime?
-  finishedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id         String         @id @default(cuid())
+  taskId     String
+  task       Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentId    String
+  agent      Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  runId      String
+  mode       AgentRunMode
+  status     AgentRunStatus @default(QUEUED)
+  documentId String?
+  steps      Int            @default(0)
+  tokensUsed Int            @default(0)
+  model      String?
+  summary    String?
+  outputJson Json?
+  denialCode String?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
   @@unique([runId, agentId])
   @@index([taskId, createdAt])

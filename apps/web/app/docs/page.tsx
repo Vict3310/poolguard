@@ -247,7 +247,7 @@ export default function DocsPage() {
                 yoctoNEAR. Browser sessions use cookies and the CSRF header; a server caller can pass its
                 own fetch implementation.
               </p>
-              <CopyablePre className="scrollbar-quiet overflow-x-auto rounded-[8px] border border-[var(--border)] bg-[#20211f] p-4 font-mono text-[11px] leading-6 text-[#e9eae5]">
+              <CopyablePre className="scrollbar-quiet overflow-x-auto rounded-[8px] border border-[var(--border)] bg-[#0a0a0d] p-4 font-mono text-[11px] leading-6 text-[#e8e8ee]">
 {`import { PoolGuard } from "@poolguard/sdk";
 
 const guard = new PoolGuard({

@@ -4,20 +4,22 @@ import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
 export const buttonVariants = cva(
-  "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-[8px] text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-[12px] text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         primary:
-          "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] shadow-[0_1px_2px_rgb(24_28_20_/_12%)]",
+          "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] shadow-[inset_0_-1px_0_rgb(0_0_0_/_12%),0_6px_18px_rgb(255_255_255_/_6%)]",
+        action:
+          "bg-[var(--action)] text-[var(--action-foreground)] hover:bg-[var(--action-hover)] shadow-[inset_0_1px_0_rgb(255_255_255_/_35%),0_8px_24px_rgb(132_134_245_/_28%)] focus-visible:outline-[var(--action)]",
         secondary:
-          "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)]",
+          "border border-[var(--border)] bg-[linear-gradient(180deg,#17171c,#101014)] text-[var(--foreground)] shadow-[inset_0_1px_0_rgb(255_255_255_/_5%)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]",
         ghost: "text-[var(--foreground-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]",
         destructive:
-          "bg-[var(--danger)] text-white hover:bg-[#8c2c2c] shadow-[0_1px_2px_rgb(24_28_20_/_12%)]",
+          "bg-[var(--danger-background)] text-[var(--danger)] shadow-[inset_0_0_0_1px_rgb(248_113_113_/_25%)] hover:bg-[#3a1519]",
         outline:
           "border border-[var(--border-strong)] bg-transparent text-[var(--foreground)] hover:bg-[var(--surface-hover)]",
-        link: "text-[var(--accent)] underline-offset-4 hover:underline",
+        link: "text-[var(--action)] underline-offset-4 hover:text-[var(--action-hover)] hover:underline",
       },
       size: {
         sm: "h-8 px-3 text-[13px] [&_svg]:size-3.5",

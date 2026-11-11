@@ -1,9 +1,10 @@
 import { loadRootEnv } from "./env.js";
 import { buildApiApp } from "./app.js";
+import { Monitor } from "./monitor.js";
 import { loadApiConfig } from "./config.js";
 import { createPrismaClient } from "@poolguard/db";
 import { NearChain } from "@poolguard/agent-runtime/chain";
-import { signerMap } from "@poolguard/agent-runtime";
+import { signerMap, custodyMap } from "@poolguard/agent-runtime";
 
 async function main() {
   loadRootEnv();
@@ -14,11 +15,20 @@ async function main() {
     rpcUrl: config.nearRpcUrl,
     contractId: config.contractId,
     signers: signerMap(config),
+    custody: custodyMap(config),
+    // Custody transactions get their real hash only after OutLayer broadcasts.
+    onTxHashResolved: async (placeholder, txHash) => {
+      await prisma.chainTransaction.updateMany({ where: { txHash: placeholder }, data: { txHash } });
+    },
   });
   const app = await buildApiApp({ prisma, chain, config });
+  // Operational alerts: stale worker, queue backlog, stuck payouts, low balances.
+  const monitor = new Monitor({ prisma, chain, config });
+  if (process.env.MONITOR_DISABLED !== "true") monitor.start();
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "shutting down API");
+    monitor.stop();
     await app.close().catch(() => undefined);
     await prisma.$disconnect().catch(() => undefined);
     process.exit(0);

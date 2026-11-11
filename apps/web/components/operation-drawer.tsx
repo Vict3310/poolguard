@@ -123,7 +123,7 @@ function DetailRow({
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="mono inline-flex items-center gap-1 break-all text-[var(--accent)] underline-offset-2 hover:underline"
+            className="mono inline-flex items-center gap-1 break-all text-[var(--action)] hover:text-[var(--action-hover)] underline-offset-2 hover:underline"
           >
             {value} <ExternalLink className="size-3 shrink-0" />
           </a>

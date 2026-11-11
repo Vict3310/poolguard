@@ -4,6 +4,8 @@
  * in deterministic code in agent.ts.
  */
 import { z } from "zod";
+import { sha256Hex } from "@poolguard/shared";
+import type { InferenceEvidence } from "./near-ai.js";
 
 export interface ChatToolCall {
   id: string;
@@ -37,6 +39,8 @@ export interface AiCompletion {
   usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   model: string;
   finishReason: string | null;
+  /** Hashes of the exact request/response bytes, for verifiable private inference. */
+  evidence?: InferenceEvidence;
 }
 
 export class AiConfigurationError extends Error {
@@ -51,6 +55,7 @@ export class AiRequestError extends Error {
 }
 
 const responseSchema = z.object({
+  id: z.string().optional(),
   model: z.string().optional(),
   choices: z
     .array(
@@ -113,20 +118,24 @@ export class OpenAiCompatibleClient {
     input.signal?.addEventListener("abort", onAbort, { once: true });
 
     try {
+      // Serialize once and keep the exact bytes: NEAR AI signs SHA-256 of the
+      // request and response bodies, so re-serializing would break verification.
+      const requestBody = JSON.stringify({
+        model: this.options.model,
+        messages: input.messages,
+        tools: input.tools,
+        tool_choice: "auto",
+        temperature: input.temperature ?? 0,
+        max_tokens: input.maxTokens ?? 700,
+      });
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
+          "accept-encoding": "identity",
           authorization: `Bearer ${this.options.apiKey}`,
         },
-        body: JSON.stringify({
-          model: this.options.model,
-          messages: input.messages,
-          tools: input.tools,
-          tool_choice: "auto",
-          temperature: input.temperature ?? 0,
-          max_tokens: input.maxTokens ?? 700,
-        }),
+        body: requestBody,
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -136,7 +145,14 @@ export class OpenAiCompatibleClient {
           response.status,
         );
       }
-      const parsed = responseSchema.safeParse(await response.json());
+      const responseBody = await response.text();
+      let json: unknown;
+      try {
+        json = JSON.parse(responseBody);
+      } catch {
+        throw new AiRequestError("AI provider returned invalid JSON", response.status);
+      }
+      const parsed = responseSchema.safeParse(json);
       if (!parsed.success) {
         throw new AiRequestError("AI provider returned an unexpected response shape", response.status);
       }
@@ -155,6 +171,12 @@ export class OpenAiCompatibleClient {
         },
         model: parsed.data.model ?? this.options.model,
         finishReason: choice.finish_reason ?? null,
+        evidence: {
+          chatId: parsed.data.id ?? null,
+          model: this.options.model,
+          requestSha256: sha256Hex(requestBody),
+          responseSha256: sha256Hex(responseBody),
+        },
       };
     } catch (error) {
       if (error instanceof AiConfigurationError || error instanceof AiRequestError) throw error;

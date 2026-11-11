@@ -10,17 +10,28 @@ Delivery: FOB Shanghai, 6 weeks
 Payment terms: Net 30
 `;
 
+/** The sign-in page asks for Terms/Privacy agreement before any sign-in option is shown. */
+export async function agreeToTerms(page: Page) {
+  const box = page.getByRole("checkbox", { name: /18 or older/ });
+  await expect(box).toBeVisible({ timeout: 30_000 });
+  // Ticking it swaps the gate for the sign-in options, so the box unmounts:
+  // click and wait for the sign-in button rather than asserting it is checked.
+  await box.click();
+  await expect(page.getByRole("button", { name: /Use sandbox session|Connect a wallet/ }).first()).toBeVisible();
+}
+
 export async function signInWithSandbox(page: Page) {
   await page.goto("/login?next=/app/tasks");
-  const start = page.getByRole("button", { name: /Use sandbox session/ });
+  const consent = page.getByRole("checkbox", { name: /18 or older/ });
   const alreadyIn = page.getByRole("heading", { name: "Tasks", exact: true });
-  await expect(start.or(alreadyIn)).toBeVisible({ timeout: 30_000 });
-  if ((await start.count()) > 0 && (await start.isVisible())) {
-    await start.click();
+  await expect(consent.or(alreadyIn)).toBeVisible({ timeout: 30_000 });
+  if ((await consent.count()) > 0 && (await consent.isVisible())) {
+    await agreeToTerms(page);
+    await page.getByRole("button", { name: /Use sandbox session/ }).click();
     await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
   }
   await page.goto("/app");
-  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible({
+  await expect(page.getByRole("heading", { level: 1, name: /Live Budget/ })).toBeVisible({
     timeout: 30_000,
   });
 }
@@ -33,7 +44,9 @@ export async function createFundedTask(
   // Step 1 · Basics
   await page.getByLabel("Task name").fill(input.name);
   await page.getByRole("button", { name: "Continue" }).click();
-  // Step 2 · Documents
+  // Step 2 · Documents (one-time upload notice per browser)
+  const notice = page.getByRole("checkbox", { name: /won’t upload personal/ });
+  if (!(await notice.isChecked())) await notice.check();
   await page.getByLabel("Document text").fill(input.document ?? CLEAN_DOCUMENT);
   await page.getByLabel("Label", { exact: true }).fill(input.documentLabel ?? "Supplier A");
   await page.getByRole("button", { name: "Continue" }).click();

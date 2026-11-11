@@ -155,3 +155,21 @@ trading, arbitrary-depth agent hierarchies, general merchant checkout, public
 agent marketplaces, reputation tokens, general dispute arbitration, confidential
 computing and a custom authentication system are not implemented. Extension
 points are intentionally small rather than speculative infrastructure.
+
+## NEAR AI Cloud and OutLayer integrations
+
+- **Private inference is verified per response, not end to end by PoolGuard.**
+  PoolGuard checks that each NEAR AI response signature binds the exact request and
+  response hashes and verifies against the attested signing key. It does not verify
+  the Intel TDX quote itself; that is NEAR AI's verifier's job.
+- **OutLayer custody depends on OutLayer.** If OutLayer is unavailable, custody
+  workers cannot sign; an unknown outcome is reconciled from chain by operation id,
+  never re-derived. OutLayer's free tier allows 1000 custody operations per wallet
+  per day. Its per-method call allowlisting is not documented, so the method and
+  amount limits still come from the PoolGuard contract; OutLayer adds spend caps,
+  transaction-type rules and a freeze switch.
+- **Custody transactions record their hash after broadcast.** Locally signed
+  transactions are hashed before broadcast; custody transactions store a
+  placeholder until OutLayer returns the real hash, then update it.
+- **NEAR Intents are not used.** Intents have no testnet, and PoolGuard is
+  testnet-only.

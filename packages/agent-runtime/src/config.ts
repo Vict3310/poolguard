@@ -25,10 +25,15 @@ export const serverConfigSchema = z.object({
     z.object({
       slot: z.union([z.literal(1), z.literal(2)]),
       accountId: z.string().min(2),
-      privateKey: z.string().min(1),
+      /** Present for `local` custody only. */
+      privateKey: z.string().min(1).optional(),
       envVar: z.string(),
+      /** `local`: key in server env. `outlayer`: key held in OutLayer's TEE custody. */
+      custody: z.enum(["local", "outlayer"]),
+      outlayerApiKey: z.string().min(1).optional(),
     }),
   ),
+  outlayerApiUrl: z.string().url(),
   aiBaseUrl: z.string().url().default("https://api.openai.com/v1"),
   aiApiKey: z.string().optional(),
   aiModel: z.string().default("gpt-4o-mini"),
@@ -51,21 +56,35 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   const workerAccounts: Array<{
     slot: 1 | 2;
     accountId: string;
-    privateKey: string;
+    privateKey?: string;
     envVar: string;
+    custody: "local" | "outlayer";
+    outlayerApiKey?: string;
   }> = [];
 
   for (const slot of [1, 2] as const) {
     const prefix = slot === 1 ? "WORKER_ONE" : "WORKER_TWO";
     const accountId = env[`${prefix}_ACCOUNT_ID`];
+    const custody = (env[`${prefix}_CUSTODY`] ?? "local").trim().toLowerCase();
+    if (custody === "outlayer") {
+      const apiKey = env[`${prefix}_OUTLAYER_API_KEY`];
+      if (!accountId || !apiKey) {
+        throw new ConfigurationError(
+          `${prefix}_CUSTODY=outlayer requires ${prefix}_ACCOUNT_ID (the wallet's implicit account) and ${prefix}_OUTLAYER_API_KEY`,
+        );
+      }
+      if (!/^[0-9a-f]{64}$/.test(accountId)) {
+        throw new ConfigurationError(
+          `${prefix}_ACCOUNT_ID must be the OutLayer wallet's 64-character implicit account id when custody is outlayer`,
+        );
+      }
+      workerAccounts.push({ slot, accountId, envVar: `${prefix}_OUTLAYER_API_KEY`, custody: "outlayer", outlayerApiKey: apiKey });
+      continue;
+    }
+    if (custody !== "local") throw new ConfigurationError(`${prefix}_CUSTODY must be "local" or "outlayer"`);
     const privateKey = env[`${prefix}_PRIVATE_KEY`];
     if (accountId && privateKey) {
-      workerAccounts.push({
-        slot,
-        accountId,
-        privateKey,
-        envVar: `${prefix}_PRIVATE_KEY`,
-      });
+      workerAccounts.push({ slot, accountId, privateKey, envVar: `${prefix}_PRIVATE_KEY`, custody: "local" });
     }
   }
 
@@ -86,6 +105,11 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     sessionSecret: env.SESSION_SECRET || undefined,
     documentEncryptionKey: env.DOCUMENT_ENCRYPTION_KEY || undefined,
     workerAccounts,
+    outlayerApiUrl:
+      env.OUTLAYER_API_URL ||
+      (env.NEAR_NETWORK === "sandbox" || !env.NEAR_NETWORK || env.NEAR_NETWORK === "testnet"
+        ? "https://testnet-api.outlayer.ai"
+        : "https://api.outlayer.ai"),
     aiBaseUrl: env.AI_BASE_URL,
     aiApiKey: env.AI_API_KEY || undefined,
     aiModel: env.AI_MODEL,
@@ -110,7 +134,9 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
 
 export function signerMap(config: ServerConfig): Record<string, string> {
   const signers: Record<string, string> = {};
-  for (const worker of config.workerAccounts) signers[worker.accountId] = worker.privateKey;
+  for (const worker of config.workerAccounts) {
+    if (worker.custody === "local" && worker.privateKey) signers[worker.accountId] = worker.privateKey;
+  }
   if (
     config.nearNetwork === "sandbox" &&
     config.ownerAccountId &&
@@ -123,4 +149,15 @@ export function signerMap(config: ServerConfig): Record<string, string> {
 
 export function aiConfigured(config: ServerConfig): boolean {
   return Boolean(config.aiApiKey && config.aiApiKey.trim().length > 0);
+}
+
+/** Worker accounts whose keys live in OutLayer custody, keyed by account id. */
+export function custodyMap(config: ServerConfig): Record<string, { apiUrl: string; apiKey: string }> {
+  const custody: Record<string, { apiUrl: string; apiKey: string }> = {};
+  for (const worker of config.workerAccounts) {
+    if (worker.custody === "outlayer" && worker.outlayerApiKey) {
+      custody[worker.accountId] = { apiUrl: config.outlayerApiUrl, apiKey: worker.outlayerApiKey };
+    }
+  }
+  return custody;
 }

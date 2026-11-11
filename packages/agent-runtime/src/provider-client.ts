@@ -7,6 +7,7 @@ import {
   catalogResponseSchema,
   computeRequestHash,
   providerAuthChallengeHash,
+  providerAuthNep413Message,
   PROVIDER_AUTH_HEADERS,
   purchaseRequestSchema,
   quoteResponseSchema,
@@ -16,6 +17,7 @@ import {
   type PurchaseRequest,
   type QuoteResponse,
 } from "@poolguard/shared";
+import type { OutLayerClient } from "./outlayer.js";
 
 export interface ProviderClientOptions {
   origin: string;
@@ -23,7 +25,10 @@ export interface ProviderClientOptions {
   contractId: string;
   serviceDomain: string;
   agentAccountId: string;
-  agentPrivateKey: string;
+  /** Local custody: the worker's key. */
+  agentPrivateKey?: string;
+  /** OutLayer custody: sign NEP-413 messages inside the TEE instead. */
+  custody?: OutLayerClient;
   timeoutMs?: number;
 }
 
@@ -49,22 +54,53 @@ export interface PurchaseInput {
 }
 
 export class ProviderClient {
-  private readonly keyPair: KeyPair;
+  private readonly keyPair: KeyPair | null;
   private readonly origin: string;
   private readonly timeoutMs: number;
 
   constructor(private readonly options: ProviderClientOptions) {
-    this.keyPair = KeyPair.fromString(options.agentPrivateKey as KeyPairString);
+    if (!options.agentPrivateKey && !options.custody) {
+      throw new Error("ProviderClient needs agentPrivateKey or an OutLayer custody client");
+    }
+    this.keyPair = options.agentPrivateKey ? KeyPair.fromString(options.agentPrivateKey as KeyPairString) : null;
     this.origin = options.origin.replace(/\/+$/, "");
     this.timeoutMs = options.timeoutMs ?? 20_000;
   }
 
-  publicKey(): string {
-    return this.keyPair.getPublicKey().toString();
+  publicKey(): string | null {
+    return this.keyPair?.getPublicKey().toString() ?? null;
   }
 
-  private signedAuth(action: "purchase" | "result", operationId: string, requestHash: string) {
+  private async signedAuth(action: "purchase" | "result", operationId: string, requestHash: string) {
     const issuedAt = new Date().toISOString();
+    if (!this.keyPair && this.options.custody) {
+      // NEP-413 requires a 32-byte nonce; the same base64 string is the replay nonce.
+      const nonce = base64Encode(crypto.getRandomValues(new Uint8Array(32)));
+      const message = providerAuthNep413Message({
+        domain: this.options.serviceDomain,
+        network: this.options.network,
+        contractId: this.options.contractId,
+        action,
+        operationId,
+        requestHash,
+        issuedAt,
+        nonce,
+      });
+      const signed = await this.options.custody.signMessage({
+        message,
+        recipient: this.options.serviceDomain,
+        nonceBase64: nonce,
+      });
+      return {
+        agent_account_id: this.options.agentAccountId,
+        public_key: signed.publicKey,
+        signature_base64: signed.signatureBase64,
+        issued_at: issuedAt,
+        nonce,
+        scheme: "nep413" as const,
+      };
+    }
+    const keyPair = this.keyPair!;
     const nonce = base64Encode(crypto.getRandomValues(new Uint8Array(24)));
     const payload = {
       domain: this.options.serviceDomain,
@@ -77,10 +113,10 @@ export class ProviderClient {
       nonce,
     };
     const digest = providerAuthChallengeHash(payload);
-    const signature = this.keyPair.sign(digest);
+    const signature = keyPair.sign(digest);
     return {
       agent_account_id: this.options.agentAccountId,
-      public_key: this.publicKey(),
+      public_key: keyPair.getPublicKey().toString(),
       signature_base64: base64Encode(signature.signature),
       issued_at: issuedAt,
       nonce,
@@ -164,7 +200,7 @@ export class ProviderClient {
       output_schema_hash: input.outputSchemaHash,
       document_label: input.documentLabel,
       document_text: input.documentText,
-      auth: this.signedAuth("purchase", input.operationId, input.requestHash),
+      auth: await this.signedAuth("purchase", input.operationId, input.requestHash),
     });
     return this.request(
       "/purchases",
@@ -178,7 +214,7 @@ export class ProviderClient {
     taskId: string;
     requestHash: string;
   }): Promise<ProviderResultResponse> {
-    const auth = this.signedAuth("result", input.operationId, input.requestHash);
+    const auth = await this.signedAuth("result", input.operationId, input.requestHash);
     const query = new URLSearchParams({
       task_id: input.taskId,
       request_hash: input.requestHash,
@@ -193,6 +229,7 @@ export class ProviderClient {
           [PROVIDER_AUTH_HEADERS.signature]: auth.signature_base64,
           [PROVIDER_AUTH_HEADERS.issuedAt]: auth.issued_at,
           [PROVIDER_AUTH_HEADERS.nonce]: auth.nonce,
+          ...("scheme" in auth && auth.scheme ? { [PROVIDER_AUTH_HEADERS.scheme]: auth.scheme } : {}),
         },
       },
       (value) => providerResultResponseSchema.parse(value),

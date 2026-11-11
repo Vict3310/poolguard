@@ -18,7 +18,7 @@ export function BudgetStrip({
 }) {
   const values = [
     { label: "Available", value: availableYocto, hint: "Ready to reserve", dot: "bg-[var(--accent)]" },
-    { label: "Reserved", value: reservedYocto, hint: "Held for open operations", dot: "bg-[#b58a3a]" },
+    { label: "Reserved", value: reservedYocto, hint: "Held for open operations", dot: "bg-[#f2b34a]" },
     { label: "Spent", value: spentYocto, hint: "Settled payouts", dot: "bg-[var(--foreground)]" },
   ];
   let total = "0";
@@ -59,7 +59,7 @@ export function BudgetStrip({
       <div className="px-5 pb-4 sm:px-6" aria-hidden>
         <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--surface-selected)]">
           <motion.div className="h-full bg-[var(--foreground)]" initial={{ width: 0 }} animate={{ width: `${spentPct}%` }} transition={spring.gentle} />
-          <motion.div className="h-full bg-[#b58a3a]" initial={{ width: 0 }} animate={{ width: `${reservedPct}%` }} transition={spring.gentle} />
+          <motion.div className="h-full bg-[#f2b34a]" initial={{ width: 0 }} animate={{ width: `${reservedPct}%` }} transition={spring.gentle} />
           <motion.div className="h-full bg-[var(--accent)]" initial={{ width: 0 }} animate={{ width: `${availablePct}%` }} transition={spring.gentle} />
         </div>
       </div>

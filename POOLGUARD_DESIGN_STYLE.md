@@ -63,8 +63,14 @@ Never display fabricated security certifications, adoption numbers, investors, p
 | `primary` | `#242721` | Primary buttons |
 | `primary-hover` | `#393E34` | Primary hover |
 | `primary-foreground` | `#FFFFFF` | Primary-button text |
-| `accent` | `#4D6042` | Small brand accents and links |
-| `focus` | `#4D6042` | Visible focus rings |
+| `accent` | `#4D6042` | Small brand accents and the "available" budget color |
+| `action` | `#C2410C` | Things the user can act on: primary CTAs, links, selected states, current step |
+| `action-hover` | `#9A3412` | Action hover and pressed |
+| `action-foreground` | `#FFFFFF` | Text on action fills (5.18:1) |
+| `action-soft` | `#FFF1E8` | Tint behind selected nav items, presets and current steps |
+| `action-bright` | `#E8590C` | Large decorative graphics only (3.37:1, never text) |
+| `action-ring` | `rgb(194 65 12 / 22%)` | Focus halo around inputs |
+| `focus` | `#C2410C` | Visible focus rings |
 | `success` | `#25603E` | Successful or delivered states |
 | `success-background` | `#ECF5EE` | Success badges |
 | `warning` | `#805514` | Pending, reserved or attention states |
@@ -75,6 +81,25 @@ Never display fabricated security certifications, adoption numbers, investors, p
 | `info-background` | `#EEF3F9` | Informational badges |
 
 Aim for approximately 85% neutral surfaces, 10% dark text/controls and 5% functional accent color. This is a composition guide, not a rendering requirement.
+
+### Orange: action, not decoration
+
+Orange means "you can act on this": the main call to action on a page, links, the
+active navigation item, focus rings, the wizard's current step, switches, selected
+presets and selected filters. Use it at most once as a filled button per view.
+
+- **Action button (orange):** the one primary next step of a page, such as "Open
+  PoolGuard", "Continue", "Review and fund task", "Run task" or "Use sandbox session".
+- **Primary button (neutral dark):** important but not the page's main next step, and
+  confirmations inside dialogs.
+- **Never** use orange for state. Green is success/paid, amber (`warning`) is
+  reserved/attention, red is denied/error. Orange sits nearer red than amber in hue
+  and is always paired with an actionable affordance, so the two never read as the
+  same signal.
+
+Contrast (WCAG AA, checked): white on `#C2410C` 5.18:1; `#C2410C` on `#F8F8F6`
+4.87:1; on `#FFF1E8` 4.69:1. `#E8590C` fails for text (3.58:1 with white), so it
+is reserved for large non-text graphics.
 
 Do not use opacity to make essential labels unreadable. Verify WCAG AA contrast: 4.5:1 for normal text, 3:1 for large text and essential non-text controls. Decorative borders can remain subtle; meaningful control boundaries must remain distinguishable.
 
@@ -168,7 +193,7 @@ Build a compact landing page that explains the product through the product itsel
 
 ### Navigation
 
-Logo left; How it works, Developers and Docs as supported links; “Open app” as the dark primary action. Use a centered content container around 1160px wide.
+Logo left; How it works, Protection, Developers and Docs as supported links; “Open app” as the orange action button. Use a centered content container around 1160px wide.
 
 ### Hero
 
@@ -185,7 +210,15 @@ Supporting copy:
 
 Actions: “Open PoolGuard” and “Watch the demo”. The second button must open a working demo or recording. Do not render a dead control.
 
-Below: one wide product window showing two agents, the shared budget and an activity list. Favor an actual app capture when available. During development an original HTML/CSS preview is acceptable if labeled “Illustrative task”. Never represent it as live chain evidence.
+Beside it: an interactive, clearly labelled “Illustrative” shared pool. Visitors click an agent to make it buy; the first purchase reserves and is paid once, the second is denied. It plays itself while idle and stops as soon as the visitor interacts. Below the actions, three chips name the protection layers (NEAR AI and OutLayer marked “optional”).
+
+### Scroll story
+
+On large screens one section pins while scroll progress drives three chapters (one purchase’s lifecycle, the shared-budget race, lost-response recovery). On small screens and with reduced motion the chapters stack statically at their final state.
+
+### Three layers of protection
+
+An animated flow from Agent → NEAR AI Cloud → OutLayer → PoolGuard contract → Provider. Visitors switch between an allowed purchase and a prompt-injected one that the contract stops. Each layer states what PoolGuard actually verifies, whether it is optional, and links to its official docs.
 
 ### Three benefits
 
@@ -315,6 +348,7 @@ Offer “Check status”, not “Pay again”. Disable conflicting actions while
 
 ### Buttons
 
+- Action: orange fill (`action`), white text, soft orange shadow. One per view, for the main next step.
 - Primary: dark neutral fill, white text, 40px desktop / 44px mobile height.
 - Secondary: white or transparent surface, clear border, dark text.
 - Ghost: text plus optional small icon; hover surface only.
@@ -381,11 +415,16 @@ On mobile:
 
 ## 15. Motion
 
-Use CSS transitions first. Duration: 120–180ms for hover/focus; 180–240ms for drawers and disclosures. Small translate/fade only. No card bounce or background parallax.
+Motion is centralized in `lib/motion.ts` (durations, easing, three spring presets) and uses Motion for React plus CSS for simple transitions. Feedback 100–200ms; reveals and layout 250–400ms. Animate `transform` and `opacity` only.
 
-Use a subtle progress indicator for running agents. Do not animate balances through fabricated intermediate values or imply finality before confirmation.
+- App: press feedback on buttons, page transitions, gliding indicators, sliding wizard steps, morphing status badges, hold-to-confirm for irreversible actions.
+- Landing only: cursor-aware tilt and spotlight (fine pointers only), magnetic main CTAs, scroll-linked pinned story, interactive illustrations.
 
-Honor `prefers-reduced-motion`. Avoid heavy canvas/WebGL effects and continuous decorative animation; the app should run comfortably on an ordinary integrated-graphics laptop.
+Balances may roll between two confirmed values for under a second, always settle on the exact string and expose the exact value to assistive technology. Never animate toward a value that has not been confirmed, and never imply finality before confirmation.
+
+Use a subtle progress indicator for running agents.
+
+Honor `prefers-reduced-motion` and the in-app Settings → Motion preference (System / Reduced / Full): with motion reduced, everything renders in its final state and stays usable. Avoid heavy canvas/WebGL effects and continuous decorative animation; the app should run comfortably on an ordinary integrated-graphics laptop.
 
 ## 16. CSS foundation
 

@@ -86,17 +86,17 @@ export default function ActivityPage() {
               className={cn(
                 "relative h-8 rounded-full border px-3 text-[12px] font-medium transition-colors duration-150",
                 active
-                  ? "border-transparent text-white"
+                  ? "border-transparent text-[var(--action)]"
                   : "border-[var(--border)] bg-[var(--surface)] text-[var(--foreground-secondary)] hover:bg-[var(--surface-hover)]",
               )}
             >
               {active ? (
-                <motion.span layoutId="activity-filter" className="absolute inset-0 rounded-full bg-[var(--primary)]" transition={spring.glide} />
+                <motion.span layoutId="activity-filter" className="absolute inset-0 rounded-full bg-[var(--action-soft)] shadow-[inset_0_0_0_1px_rgb(165_166_246_/_16%)]" transition={spring.glide} />
               ) : null}
               <span className="relative inline-flex items-center gap-1.5">
                 {item.label}
                 {activity.data ? (
-                  <span className={cn("financial-value text-[10px]", active ? "text-white/70" : "text-[var(--foreground-muted)]")}>{count}</span>
+                  <span className={cn("financial-value text-[10px]", active ? "text-[var(--action)]/70" : "text-[var(--foreground-muted)]")}>{count}</span>
                 ) : null}
               </span>
             </button>
@@ -116,7 +116,7 @@ export default function ActivityPage() {
               window.scrollTo({ top: 0, behavior: "smooth" });
               setSeenTopId(topId);
             }}
-            className="fixed left-1/2 top-20 z-30 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-2 text-[12px] font-medium text-white shadow-[0_8px_24px_rgb(24_28_20_/_18%)]"
+            className="fixed left-1/2 top-20 z-30 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-2 text-[12px] font-medium text-[var(--primary-foreground)] shadow-[0_8px_24px_rgb(0_0_0_/_45%)]"
           >
             <ArrowUp className="size-3.5" /> {newCount} new {newCount === 1 ? "event" : "events"}
           </motion.button>

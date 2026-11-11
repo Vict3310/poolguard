@@ -251,7 +251,7 @@ function PaletteDialog({
           <DialogPrimitive.Portal forceMount>
             <DialogPrimitive.Overlay asChild forceMount>
               <motion.div
-                className="fixed inset-0 z-[70] bg-[rgb(24_28_20_/_24%)] backdrop-blur-[2px]"
+                className="fixed inset-0 z-[70] bg-[rgb(0_0_0_/_45%)] backdrop-blur-[2px]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -260,7 +260,7 @@ function PaletteDialog({
             </DialogPrimitive.Overlay>
             <DialogPrimitive.Content asChild forceMount aria-describedby={undefined}>
               <motion.div
-                className="fixed left-1/2 top-[14vh] z-[71] w-[calc(100%-32px)] max-w-[600px] -translate-x-1/2 overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_24px_64px_rgb(24_28_20_/_16%)]"
+                className="fixed left-1/2 top-[14vh] z-[71] w-[calc(100%-32px)] max-w-[600px] -translate-x-1/2 overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_24px_64px_rgb(0_0_0_/_45%)]"
                 initial={{ opacity: 0, scale: 0.97, y: -6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, y: -4 }}

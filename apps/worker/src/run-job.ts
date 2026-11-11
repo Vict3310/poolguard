@@ -5,7 +5,11 @@ import {
   NearChain,
   OpenAiCompatibleClient,
   ProviderRequestError,
+  isNearAiBaseUrl,
   runAgent,
+  verifyPrivateInference,
+  type CompletionClient,
+  type InferenceEvidence,
   type ServerConfig,
 } from "@poolguard/agent-runtime";
 import { z } from "zod";
@@ -103,19 +107,56 @@ export async function handleRunAgentJob(deps: WorkerDeps, job: Job): Promise<voi
     throw new PermanentJobError("AI_NOT_CONFIGURED: live runs require AI_API_KEY");
   }
 
+  // Record exact-bytes hashes of every completion so NEAR AI private inference
+  // can be verified after the run. Document text itself is never stored.
+  const inferences: InferenceEvidence[] = [];
+  const recordingClient: CompletionClient | undefined = client
+    ? {
+        complete: async (input) => {
+          const completion = await client.complete(input);
+          if (completion.evidence) inferences.push(completion.evidence);
+          return completion;
+        },
+      }
+    : undefined;
+
   try {
     const result = await runAgent(host, {
       mode: payload.mode,
-      client,
+      client: recordingClient,
       maxSteps: 8,
       maxTokens: 5_000,
       timeoutMs: 180_000,
     });
     const status =
       result.status === "succeeded" ? "SUCCEEDED" : result.status === "partial" ? "PARTIAL" : "FAILED";
+    const privateInference =
+      payload.mode === "live" && inferences.length > 0 && deps.config.aiApiKey && isNearAiBaseUrl(deps.config.aiBaseUrl)
+        ? await verifyPrivateInference({
+            baseUrl: deps.config.aiBaseUrl,
+            apiKey: deps.config.aiApiKey,
+            model: deps.config.aiModel,
+            evidence: inferences,
+          }).catch(() => null)
+        : null;
+    if (privateInference) {
+      await recordAudit(deps.prisma, {
+        taskId: run.taskId,
+        type: "ai.private_inference",
+        actor: run.agent.accountId,
+        summary:
+          privateInference.verifiedCount === privateInference.totalCount
+            ? `Private inference on NEAR AI Cloud: ${privateInference.verifiedCount}/${privateInference.totalCount} responses signed by an attested TEE key.`
+            : `Private inference on NEAR AI Cloud: ${privateInference.verifiedCount}/${privateInference.totalCount} response signatures verified.`,
+        severity: privateInference.verifiedCount === privateInference.totalCount ? "success" : "warning",
+        data: privateInference as unknown as Record<string, unknown>,
+        dedupeKey: `private-inference:${payload.runId}:${payload.agentId}`,
+      });
+    }
     await deps.prisma.agentRun.update({
       where: { id: run.id },
       data: {
+        ...(privateInference ? { outputJson: { privateInference } as never } : {}),
         status,
         steps: result.steps.length,
         tokensUsed: result.tokensUsed,

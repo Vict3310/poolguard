@@ -32,6 +32,13 @@ export const ACTIVITY_EVENT_TYPES = [
   "demo.scenario.started",
   "demo.scenario.finished",
   "sync.completed",
+  "ai.private_inference",
+  "account.consented",
+  "account.data_exported",
+  "account.data_deleted",
+  "account.sessions_revoked",
+  "admin.action",
+  "alert.raised",
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 
@@ -113,4 +120,11 @@ export const SEVERITY_BY_TYPE: Record<ActivityEventType, ActivityEvent["severity
   "demo.scenario.started": "info",
   "demo.scenario.finished": "success",
   "sync.completed": "neutral",
+  "ai.private_inference": "success",
+  "account.consented": "neutral",
+  "account.data_exported": "info",
+  "account.data_deleted": "warning",
+  "account.sessions_revoked": "warning",
+  "admin.action": "info",
+  "alert.raised": "danger",
 };

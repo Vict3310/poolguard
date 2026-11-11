@@ -33,12 +33,21 @@ import {
   type ContractPolicyInput,
   type ContractReserveRequest,
 } from "@poolguard/shared";
+import { randomUUID } from "node:crypto";
+import { OutLayerClient, OutLayerError, implicitAccountPublicKey } from "./outlayer.js";
 
 export interface NearChainOptions {
   network: "sandbox" | "testnet";
   rpcUrl: string;
   contractId: string;
   signers: Record<string, string>;
+  /** Accounts whose keys are held in OutLayer TEE custody. */
+  custody?: Record<string, { apiUrl: string; apiKey: string }>;
+  /**
+   * Custody transactions are signed remotely, so their hash is only known after
+   * broadcast. Callers persist a placeholder first; this hook swaps in the real hash.
+   */
+  onTxHashResolved?: (placeholder: string, txHash: string) => Promise<void>;
   requestTimeoutMs?: number;
 }
 
@@ -58,7 +67,9 @@ export interface PreparedTransaction {
   gasTgas: number;
   depositYocto: string;
   txHash: string;
-  signed: SignedTransaction;
+  /** Absent for custody transactions, which are signed inside OutLayer's TEE. */
+  signed?: SignedTransaction;
+  custody?: "outlayer";
   preparedAt: string;
 }
 
@@ -168,6 +179,8 @@ export class NearChain {
   readonly network: "sandbox" | "testnet";
   readonly contractId: string;
   private readonly signers = new Map<string, KeyPair>();
+  private readonly custody = new Map<string, OutLayerClient>();
+  private readonly onTxHashResolved?: (placeholder: string, txHash: string) => Promise<void>;
   private readonly accounts = new Map<string, Account>();
   private readonly queue = new KeyQueue();
   private readonly timeoutMs: number;
@@ -185,13 +198,31 @@ export class NearChain {
       this.signers.set(accountId, pair);
       this.accounts.set(accountId, new Account(accountId, this.provider, new KeyPairSigner(pair)));
     }
+    for (const [accountId, custody] of Object.entries(options.custody ?? {})) {
+      if (!implicitAccountPublicKey(accountId)) {
+        throw new Error(`Custody account ${accountId} must be a 64-character implicit account id`);
+      }
+      this.custody.set(accountId, new OutLayerClient({ ...custody, timeoutMs: this.timeoutMs + 15_000 }));
+    }
+    this.onTxHashResolved = options.onTxHashResolved;
   }
 
   hasSigner(accountId: string): boolean {
-    return this.signers.has(accountId);
+    return this.signers.has(accountId) || this.custody.has(accountId);
+  }
+
+  /** "local" (key in server env), "outlayer" (TEE custody) or null (no signer). */
+  custodyOf(accountId: string): "local" | "outlayer" | null {
+    if (this.custody.has(accountId)) return "outlayer";
+    return this.signers.has(accountId) ? "local" : null;
+  }
+
+  custodyClient(accountId: string): OutLayerClient | null {
+    return this.custody.get(accountId) ?? null;
   }
 
   publicKeyFor(accountId: string): string | null {
+    if (this.custody.has(accountId)) return implicitAccountPublicKey(accountId);
     return this.signers.get(accountId)?.getPublicKey().toString() ?? null;
   }
 
@@ -235,6 +266,7 @@ export class NearChain {
    * chain before the next signature.
    */
   resetSignerNonce(accountId: string): void {
+    if (this.custody.has(accountId)) return;
     const pair = this.signers.get(accountId);
     if (!pair) return;
     this.accounts.set(accountId, new Account(accountId, this.provider, new KeyPairSigner(pair)));
@@ -303,6 +335,23 @@ export class NearChain {
     actions: ActionSpec[];
   }): Promise<PreparedTransaction> {
     if (input.actions.length === 0) throw new Error("A transaction needs at least one action");
+    if (this.custody.has(input.signerAccountId)) {
+      if (input.actions.length !== 1) throw new Error("Custody signers support single-call transactions only");
+      const action = input.actions[0]!;
+      return {
+        signerAccountId: input.signerAccountId,
+        receiverId: this.contractId,
+        methodName: action.methodName,
+        args: action.args,
+        actions: input.actions,
+        gasTgas: action.gasTgas,
+        depositYocto: action.depositYocto,
+        // Placeholder until OutLayer signs and broadcasts inside its TEE.
+        txHash: `outlayer-pending-${randomUUID()}`,
+        custody: "outlayer",
+        preparedAt: new Date().toISOString(),
+      };
+    }
     const account = this.account(input.signerAccountId);
     const nearActions = input.actions.map((action) =>
       actions.functionCall(
@@ -351,10 +400,13 @@ export class NearChain {
     prepared: PreparedTransaction,
     options: { dropResponseAfterSend?: boolean } = {},
   ): Promise<ChainOutcome> {
+    if (prepared.custody === "outlayer") return this.submitViaCustody(prepared, options);
+    if (!prepared.signed) throw new Error("Prepared transaction is not signed");
+    const signedTransaction = prepared.signed;
     let response: Awaited<ReturnType<JsonRpcProvider["sendTransactionUntil"]>>;
     try {
       response = await withTimeout(
-        this.provider.sendTransactionUntil(prepared.signed, "FINAL"),
+        this.provider.sendTransactionUntil(signedTransaction, "FINAL"),
         this.timeoutMs,
         "sendTransaction",
         prepared.txHash,
@@ -379,6 +431,63 @@ export class NearChain {
     if (outcome.status === "failure") {
       this.resetSignerNonce(prepared.signerAccountId);
       throw new ChainDenialError(outcome.errorCode, prepared.txHash, outcome.errorMessage ?? "Transaction failed");
+    }
+    return outcome;
+  }
+
+  /**
+   * Broadcast through OutLayer custody. OutLayer applies the wallet policy, signs in
+   * its TEE and returns the real hash; the outcome is then read from chain so
+   * denials and receipts are handled exactly like locally signed transactions.
+   */
+  private async submitViaCustody(
+    prepared: PreparedTransaction,
+    options: { dropResponseAfterSend?: boolean },
+  ): Promise<ChainOutcome> {
+    const client = this.custody.get(prepared.signerAccountId);
+    if (!client) throw new Error(`NO_CUSTODY_FOR_${prepared.signerAccountId}`);
+    const placeholder = prepared.txHash;
+    const resolve = async (txHash: string | null) => {
+      if (!txHash || txHash === prepared.txHash) return;
+      prepared.txHash = txHash;
+      await this.onTxHashResolved?.(placeholder, txHash).catch(() => undefined);
+    };
+    let txHash: string | null;
+    try {
+      const result = await client.call({
+        receiverId: prepared.receiverId,
+        methodName: prepared.methodName,
+        args: prepared.args,
+        gas: (BigInt(prepared.gasTgas) * 1_000_000_000_000n).toString(),
+        deposit: prepared.depositYocto,
+      });
+      txHash = result.txHash;
+    } catch (error) {
+      if (error instanceof OutLayerError) {
+        await resolve(error.txHash);
+        if (error.definitive) {
+          const code = extractDenialCode(error.message);
+          throw new ChainDenialError(code, prepared.txHash, error.message);
+        }
+        // Transport errors, rate limits, 5xx: outcome unknown. Recovery reconciles
+        // the original operation from chain; nothing is re-derived.
+        throw new ChainTransportError(error.message, prepared.txHash, error);
+      }
+      throw new ChainTransportError(`Custody submission failed: ${messageOf(error)}`, prepared.txHash, error);
+    }
+    await resolve(txHash);
+    if (options.dropResponseAfterSend) {
+      throw new InjectedResponseLoss(`FAULT_INJECTED: response for ${prepared.txHash} dropped after submission`, prepared.txHash);
+    }
+    if (!txHash) {
+      throw new ChainTransportError("OutLayer accepted the call but returned no transaction hash", prepared.txHash);
+    }
+    const outcome = await this.transactionStatus(txHash, prepared.signerAccountId);
+    if (outcome.status === "failure") {
+      throw new ChainDenialError(outcome.errorCode, txHash, outcome.errorMessage ?? "Transaction failed");
+    }
+    if (outcome.status !== "success") {
+      throw new ChainTransportError(`Custody transaction ${txHash} is ${outcome.status}`, txHash);
     }
     return outcome;
   }

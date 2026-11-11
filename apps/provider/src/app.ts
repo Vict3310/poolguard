@@ -316,6 +316,7 @@ export async function buildProviderApp(options: ProviderAppOptions): Promise<Fas
       signature_base64: headers.data[PROVIDER_AUTH_HEADERS.signature],
       issued_at: headers.data[PROVIDER_AUTH_HEADERS.issuedAt],
       nonce: headers.data[PROVIDER_AUTH_HEADERS.nonce],
+      ...(request.headers[PROVIDER_AUTH_HEADERS.scheme] === "nep413" ? { scheme: "nep413" as const } : {}),
     };
     let agents: AgentRegistration[];
     try {

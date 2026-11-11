@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useMotionReduced } from "@/components/preferences-provider";
 import { Check, Lock, ShieldX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { duration, ease, spring } from "@/lib/motion";
@@ -50,7 +51,7 @@ const FRAMES = [
 type AgentState = (typeof FRAMES)[number]["one"] | (typeof FRAMES)[number]["two"];
 
 export function PoolVignette({ className, compact = false }: { className?: string; compact?: boolean }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const [index, setIndex] = React.useState(reduce ? FRAMES.length - 1 : 0);
 
   React.useEffect(() => {
@@ -70,7 +71,7 @@ export function PoolVignette({ className, compact = false }: { className?: strin
   return (
     <div
       className={cn(
-        "relative w-full max-w-[440px] rounded-[16px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[0_24px_64px_rgb(24_28_20_/_9%)]",
+        "relative w-full max-w-[440px] rounded-[16px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[0_24px_64px_rgb(0_0_0_/_45%)]",
         className,
       )}
       role="img"
@@ -102,7 +103,7 @@ export function PoolVignette({ className, compact = false }: { className?: strin
           transition={barTransition}
         />
         <motion.div
-          className="h-full bg-[#b58a3a]"
+          className="h-full bg-[#f2b34a]"
           animate={{ width: `${(frame.reserved / total) * 100}%` }}
           transition={barTransition}
         />
@@ -114,7 +115,7 @@ export function PoolVignette({ className, compact = false }: { className?: strin
       </div>
       <div className="mt-2 flex gap-4 text-[11px] text-[var(--foreground-muted)]">
         <Legend color="bg-[var(--accent)]" label="Available" />
-        <Legend color="bg-[#b58a3a]" label="Reserved" />
+        <Legend color="bg-[#f2b34a]" label="Reserved" />
         <Legend color="bg-[var(--foreground)]" label="Spent" />
       </div>
 
@@ -170,7 +171,7 @@ function AgentChip({ name, state, instant }: { name: string; state: AgentState; 
       : state === "paid"
         ? "border-[var(--success)]/25 bg-[var(--success-background)]"
         : state === "reserved"
-          ? "border-[#b58a3a]/30 bg-[var(--warning-background)]"
+          ? "border-[#f2b34a]/30 bg-[var(--warning-background)]"
           : "border-[var(--border)] bg-[var(--surface)]";
   const label =
     state === "denied" ? "INSUFFICIENT_BUDGET" : state === "paid" ? "Paid once" : state === "reserved" ? "Reserved 0.02" : "Waiting";

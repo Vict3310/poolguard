@@ -39,6 +39,7 @@ export async function getWalletModal(selector: WalletSelector) {
     const { setupModal } = await import("@near-wallet-selector/modal-ui");
     return setupModal(selector, {
       contractId: process.env.NEXT_PUBLIC_POOLGUARD_CONTRACT_ID ?? "poolguard.testnet",
+      theme: "dark",
     });
   })();
   return modalPromise;

@@ -21,13 +21,13 @@ export function DialogContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgb(24_28_20_/_28%)] backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgb(0_0_0_/_62%)] backdrop-blur-[3px] data-[state=open]:animate-in data-[state=closed]:animate-out" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed z-50 flex flex-col border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-popover)]",
+          "fixed z-50 flex flex-col border border-[var(--border)] bg-[#0d0d11] shadow-[var(--shadow-popover)]",
           variant === "center"
-            ? "left-1/2 top-1/2 max-h-[min(88dvh,760px)] w-[calc(100%-32px)] max-w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-[14px]"
-            : "bottom-0 right-0 top-0 h-dvh w-full max-w-[560px] rounded-none border-y-0 border-r-0 sm:rounded-l-[14px] sm:border-l",
+            ? "left-1/2 top-1/2 max-h-[min(88dvh,760px)] w-[calc(100%-32px)] max-w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-[22px]"
+            : "bottom-0 right-0 top-0 h-dvh w-full max-w-[560px] rounded-none border-y-0 border-r-0 sm:rounded-l-[22px] sm:border-l",
           className,
         )}
         {...props}
